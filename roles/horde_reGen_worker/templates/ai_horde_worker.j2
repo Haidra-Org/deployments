@@ -1,0 +1,16 @@
+[Unit]
+Description=AI Horde reGen Worker
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=/home/db0/projects/horde-worker-reGen
+ExecStart=sh -c '/home/db0/projects/horde-worker-reGen/horde-bridge.sh'
+Restart=always
+RestartSec=15
+TimeoutStopSec=120
+KillSignal=SIGINT
+Environment="{{ worker_environment }}"
+
+[Install]
+WantedBy=default.target

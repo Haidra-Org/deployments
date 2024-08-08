@@ -1,0 +1,98 @@
+---
+
+- name: Ensure {{ worker_username }} user exists
+  user:
+    name: "{{ worker_username }}"
+    shell: /bin/bash
+  tags: worker
+
+
+- name: Clone Horde github repository
+  git:
+    repo: https://github.com/Haidra-Org/horde-worker-reGen.git
+    dest: /home/{{ worker_username }}/horde-worker-reGen
+    clone: yes
+    update: yes
+  tags: worker
+
+  
+- name: Ensure git repo is owned by {{ worker_username }}
+  file:
+    path: /home/{{ worker_username }}/horde-worker-reGen
+    owner: "{{ worker_username }}"
+    group: "{{ worker_username }}"
+    recurse: true
+  tags: worker
+
+
+- name: Deploy bridgeData
+  template:
+    src: bridgeData.yaml.j2
+    dest: /home/{{ worker_username }}/horde-worker-reGen/bridgeData.yaml
+    owner: "{{ worker_username }}"
+    group: "{{ worker_username }}"
+    mode: '0644'
+  tags: 
+  - worker
+
+- name: Ensure systemd directory exists
+  file:
+    path: /home/{{ worker_username }}/.config/systemd/user/
+    owner: "{{ worker_username }}"
+    group: "{{ worker_username }}"
+    mode: '0755'
+    state: directory
+  tags: 
+  - worker
+  - systemd
+
+- name: Ensure horde systemd services exist in userspace
+  template:
+    src: ai_horde_worker.j2
+    dest: /home/{{ worker_username }}/.config/systemd/user/ai_horde_worker.service
+    owner: "{{ worker_username }}"
+    group: "{{ worker_username }}"
+    mode: '0644'
+  tags: 
+  - worker
+  - systemd
+  
+- name: Ensure XDG_RUNTIME_DIR is set in user's .bashrc
+  lineinfile:
+    path: /home/{{ worker_username }}/.bashrc
+    line: export XDG_RUNTIME_DIR=/run/user/$(id -u)
+    owner: "{{ worker_username }}"
+    group: "{{ worker_username }}"
+  tags: 
+  - worker
+  - systemd
+
+- name: Enable {{ worker_username }} lingering if needed
+  command: loginctl enable-linger {{ worker_username }}
+  args:
+    creates: /var/lib/systemd/linger/{{ worker_username }}
+  tags: 
+  - worker
+  - systemd
+
+# Needed for the next task
+- name: Find {{ worker_username }} uid
+  getent:
+    database: passwd
+  tags: 
+  - horde
+  - systemd
+
+- name: Ensure AI Worker service is started
+  systemd:
+    state: started
+    daemon_reload: yes
+    name: ai_horde_worker
+    enabled: True
+    scope: user
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ getent_passwd[worker_username].1 }}"
+  become_user: "{{ worker_username }}"
+  tags: 
+  - worker
+  - systemd

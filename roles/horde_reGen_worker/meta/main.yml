@@ -1,0 +1,23 @@
+galaxy_info:
+  role_name: horde_reGen_worker
+  author: db0
+  description: Configure a horde reGen worker
+  license: AGPLv3
+  min_ansible_version: 2.10
+  platforms:
+  - name: Debian
+    versions:
+    - 11
+    - 12
+  - name: Ubuntu
+    versions:
+    - 2204
+    - 2404
+  galaxy_tags: 
+  - python
+  - server
+  - cluster
+dependencies: 
+- role: geerlingguy.swap
+  vars:
+    swap_file_size_mb: '34359'
