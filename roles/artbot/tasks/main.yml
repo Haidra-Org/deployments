@@ -68,7 +68,7 @@
   become_user: artbot
   tags: 
   - artbot_app
-  - 9update
+  - update
 
 - name: Build artbot
   shell: source /home/artbot/.nvm/nvm.sh && npm run build
