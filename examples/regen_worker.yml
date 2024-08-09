@@ -1,0 +1,7 @@
+---
+
+- hosts: regen_server
+
+  roles:
+  - name: haidra.deployments.horde_regen_worker
+    tags: regen

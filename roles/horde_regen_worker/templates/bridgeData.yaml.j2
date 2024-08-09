@@ -114,13 +114,13 @@ allow_lora:  {{ allow_lora }}
 max_lora_cache_size: {{ max_lora_cache_size }} # In gigabytes. Min is 10.
 
 # Automatically determine the models which have the highest queue and offer those.
-dynamic_models: {{ dynamic_models }} # Currently unused in reGen
+dynamic_models: {{ dynamic_models }} # Currently unused in regen
 
 # The number of models to offer when `dynamic_models` is true.
-number_of_dynamic_models: {{ number_of_dynamic_models }} # Currently unused in reGen
+number_of_dynamic_models: {{ number_of_dynamic_models }} # Currently unused in regen
 
 # If `dynamic_models` is true, the maximum number of models to download automatically for that purpose.
-max_models_to_download: {{ max_models_to_download }} # Currently unused in reGen
+max_models_to_download: {{ max_models_to_download }} # Currently unused in regen
 
 # The frequency (in seconds) to output worker summary stats, such as kudos per hour.
 # Set to zero to disable stats output completely.
@@ -131,7 +131,7 @@ stats_output_frequency: {{ stats_output_frequency }}
 cache_home: {{ cache_home }}
 
 # Always download models when required without prompting
-always_download: true # Currently unused in reGen
+always_download: true # Currently unused in regen
 
 # Disable the terminal GUI, which displays information about the worker and the horde.
 disable_terminal_ui: true
@@ -168,7 +168,7 @@ models_to_skip: {{ models_to_skip }}
 # If you are getting messages about jobs taking too long, you can change this to true if you no longer want to see them
 # Please note, that if you *are* getting these messages, you are serving jobs much slower than is ideal,
 # and you very likely would get more kudos/hr if you just lower your max_power.
-suppress_speed_warnings: false # Currently unused in reGen
+suppress_speed_warnings: false # Currently unused in regen
 
 #########################
 ## Scribe (LLM Worker) ##

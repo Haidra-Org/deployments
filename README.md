@@ -34,3 +34,4 @@ Or you can make your own global `site.yml` with all your configuration for the v
 
 * [artbot](roles/artbot/README.md)
 * [artbot_revproxy](roles/artbot_revproxy/README.md)
+* [regen_worker](roles/regen_worker/README.md)

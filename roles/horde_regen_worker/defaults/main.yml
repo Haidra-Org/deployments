@@ -1,6 +1,10 @@
 ---
 ## Ansible vars
+# The username of the user under which the worker will run
+# For your local workfstation, you can use your own username
 worker_username: hworker
+# Any extra environment variables that will be passed to the worker
+# from the systemd service
 worker_environment: ""
 
 ## BridgeData vars
@@ -119,13 +123,13 @@ allow_lora: false
 max_lora_cache_size: 10 # In gigabytes. Min is 10.
 
 # Automatically determine the models which have the highest queue and offer those.
-dynamic_models: false # Currently unused in reGen
+dynamic_models: false # Currently unused in regen
 
 # The number of models to offer when `dynamic_models` is true.
-number_of_dynamic_models: 0 # Currently unused in reGen
+number_of_dynamic_models: 0 # Currently unused in regen
 
 # If `dynamic_models` is true, the maximum number of models to download automatically for that purpose.
-max_models_to_download: 10 # Currently unused in reGen
+max_models_to_download: 10 # Currently unused in regen
 
 # The frequency (in seconds) to output worker summary stats, such as kudos per hour.
 # Set to zero to disable stats output completely.
@@ -181,7 +185,7 @@ models_to_load:
 models_to_skip:
   - "pix2pix" # Not currently supported
   - "SDXL_beta::stability.ai#6901" # Do not remove this, as this model would never work
-  - A to Zovya RPG # This model is known to cause problems with reGen
+  - A to Zovya RPG # This model is known to cause problems with regen
   # - ALL NSFW MODELS
   #- "stable_diffusion_inpainting"  # Inpainting is generally quite heavy along with other models for smaller GPUs.
   #- "stable_diffusion_2.1"  # Stable diffusion 2.1 has bigger memory requirements than 1.5, so if your card cannot lift, it, disable it
@@ -193,7 +197,7 @@ models_to_skip:
 # If you are getting messages about jobs taking too long, you can change this to true if you no longer want to see them
 # Please note, that if you *are* getting these messages, you are serving jobs much slower than is ideal,
 # and you very likely would get more kudos/hr if you just lower your max_power.
-suppress_speed_warnings: false # Currently unused in reGen
+suppress_speed_warnings: false # Currently unused in regen
 
 #########################
 ## Scribe (LLM Worker) ##

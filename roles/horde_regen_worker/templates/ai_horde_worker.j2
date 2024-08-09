@@ -1,11 +1,11 @@
 [Unit]
-Description=AI Horde reGen Worker
+Description=AI Horde regen Worker
 After=network.target
 StartLimitIntervalSec=0
 
 [Service]
-WorkingDirectory=/home/db0/projects/horde-worker-reGen
-ExecStart=sh -c '/home/db0/projects/horde-worker-reGen/horde-bridge.sh'
+WorkingDirectory=/home/db0/projects/horde-worker-regen
+ExecStart=sh -c '/home/db0/projects/horde-worker-regen/horde-bridge.sh'
 Restart=always
 RestartSec=15
 TimeoutStopSec=120
