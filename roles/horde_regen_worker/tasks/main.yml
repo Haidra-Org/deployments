@@ -10,7 +10,7 @@
 - name: Clone Horde github repository
   git:
     repo: https://github.com/Haidra-Org/horde-worker-regen.git
-    dest: /home/{{ worker_username }}/horde-worker-regen
+    dest: /home/{{ worker_username }}/{{ worker_clone_dir }}
     clone: yes
     update: yes
   tags: worker
@@ -18,17 +18,25 @@
   
 - name: Ensure git repo is owned by {{ worker_username }}
   file:
-    path: /home/{{ worker_username }}/horde-worker-regen
+    path: /home/{{ worker_username }}/{{ worker_clone_dir }}
     owner: "{{ worker_username }}"
     group: "{{ worker_username }}"
     recurse: true
   tags: worker
 
+- name: Ensure worker_runtime_dir {{ worker_runtime_dir }} exists.
+  file:
+    path: /home/{{ worker_username }}/{{ worker_runtime_dir }}
+    owner: "{{ worker_username }}"
+    group: "{{ worker_username }}"
+    state: directory
+  tags: 
+  - worker
 
 - name: Deploy bridgeData
   template:
     src: bridgeData.yaml.j2
-    dest: /home/{{ worker_username }}/horde-worker-regen/bridgeData.yaml
+    dest: /home/{{ worker_username }}/{{ worker_runtime_dir }}/bridgeData.yaml
     owner: "{{ worker_username }}"
     group: "{{ worker_username }}"
     mode: '0644'
@@ -49,7 +57,7 @@
 - name: Ensure horde systemd services exist in userspace
   template:
     src: ai_horde_worker.j2
-    dest: /home/{{ worker_username }}/.config/systemd/user/ai_horde_worker.service
+    dest: /home/{{ worker_username }}/.config/systemd/user/{{ worker_service_name }}.service
     owner: "{{ worker_username }}"
     group: "{{ worker_username }}"
     mode: '0644'

@@ -6,6 +6,15 @@ worker_username: hworker
 # Any extra environment variables that will be passed to the worker
 # from the systemd service
 worker_environment: ""
+# The directory in which to clone the worker code.
+worker_clone_dir: horde-worker-regen
+# The directory from which to call the regen worker. By default it should be the clone dir
+# but if you use a different one, it will create it and run the worker from there, which will allow multiple worker
+# to utilize the same server with independent bridgeData.yaml files and log folders
+worker_runtime_dir: horde-worker-regen
+# The filename to use for the systemd service. Modify it to be different if you'll run more worker in the same server.
+# Ensure this is a valid filename
+worker_service_name: ai_horde_worker
 
 ## BridgeData vars
 # The horde url
