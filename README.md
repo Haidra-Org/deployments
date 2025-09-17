@@ -23,8 +23,6 @@ wget https://raw.githubusercontent.com/Haidra-Org/deployments/main/examples/requ
 ansible-galaxy collection install -r requirements.yml
 ```
 
-Alternatively you can use the provided requir
-
 # Included Roles
 
 Each role within provides its own readme with instructions. 
@@ -36,5 +34,5 @@ Or you can make your own global `site.yml` with all your configuration for the v
 
 * [artbot](roles/artbot/README.md)
 * [artbot_revproxy](roles/artbot_revproxy/README.md)
-* [regen_worker](roles/regen_worker/README.md)
+* [horde_regen_worker](roles/horde_regen_worker/README.md)
 * [amd_gpu_drivers](roles/amd_gpu_drivers/README.md)
