@@ -316,34 +316,8 @@
     horde_model_reference_base_dir: /opt/horde-model-reference-haproxy-test
 
   pre_tasks:
-    - name: Install HAProxy for config validation
-      ansible.builtin.package:
-        name: haproxy
-        state: present
-
-    - name: Create HAProxy config directory for test
-      ansible.builtin.file:
-        path: /etc/haproxy
-        state: directory
-        mode: "0755"
-
-    - name: Create stub HAProxy config with listener for test validation
-      ansible.builtin.copy:
-        dest: /etc/haproxy/haproxy.cfg
-        content: |
-          global
-              log /dev/log local0
-          defaults
-              mode http
-              timeout connect 5s
-              timeout client 50s
-              timeout server 50s
-          frontend ci_stub_front
-              bind 127.0.0.1:18081
-              default_backend ci_stub_backend
-          backend ci_stub_backend
-              server ci_stub_server 127.0.0.1:18082
-        mode: "0644"
+    - name: Prepare HAProxy baseline config for conf.d validation
+      ansible.builtin.include_tasks: ../_shared/haproxy_test_pretasks.yml
 
   roles:
     - horde_model_reference

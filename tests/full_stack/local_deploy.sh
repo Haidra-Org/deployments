@@ -204,7 +204,7 @@ check_fullstack_prerequisites() {
   check_prerequisites git ss
 
   # Port conflict detection
-  local core_ports=(80 8006 8088 8404 19800)
+  local core_ports=(80 8006 19810 8404 19800)
   for port in "${core_ports[@]}"; do
     if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
       err "Port $port is already in use."
@@ -448,37 +448,43 @@ probe_otlp_native_histograms() {
   done
   log "  primed 20 requests"
 
-  # 3. Wait for ingestion (alloy batch=5s + deltatocumulative + mimir flush).
-  info "Probe: waiting 30s for OTLP ingestion to flush"
-  sleep 30
-
-  # 4. Native-histogram probe — query the series API for any duration
-  #    histogram known to be emitted by either logfire's flask
-  #    auto-instrumentation (`http_server_duration_*`,
-  #    `http_server_request_duration_*`) or our explicit horde_*_duration
-  #    instruments.  We use /series rather than /query to avoid having to
-  #    pick the "right" exact name — the goal is just to confirm SOMETHING
-  #    landed in this tenant from the OTLP pipeline.  Tempo span-metrics /
-  #    service-graph series are excluded by the regex anchor.
+  # 3+4. Poll Mimir for series — retry every 10s for up to 90s.
+  #
+  #  Why a retry loop instead of a fixed sleep:
+  #    - OTEL_METRIC_EXPORT_INTERVAL=10s (set in local_deploy.yml) means the
+  #      first batch lands within ~10-15s of the priming requests.
+  #    - alloy batches at 5s; Mimir makes OTLP pushes immediately queryable.
+  #    - If the SDK had to reconnect after a startup delay (alloy joins
+  #      horde-stack in tier 3, after aihorde starts in tier 1), the first
+  #      successful export may arrive later than the nominal 10s interval.
+  #    - 90s total ceiling covers worst-case SDK reconnect + one full export
+  #      cycle even without the shortened interval.
+  #
+  #  We use /series rather than /query to avoid having to pick the "right"
+  #  exact name — the goal is just to confirm SOMETHING landed in this tenant
+  #  from the OTLP pipeline.  Tempo span-metrics / service-graph series are
+  #  excluded by the regex anchor.
   local match='{__name__=~"(http_server|horde_).+_duration(_bucket|_sum|_count)?"}'
   info "Probe: series matching ${match}"
-  local response
-  response=$(curl -sf -G \
-      -H "X-Scope-OrgID: ${tenant}" \
-      --data-urlencode "match[]=${match}" \
-      --data-urlencode "start=$(date -u -d '10 min ago' +%s)" \
-      --data-urlencode "end=$(date -u +%s)" \
-      --max-time 15 \
-      "${mimir_url}/prometheus/api/v1/series" 2>/dev/null || true)
-  if [ -z "$response" ]; then
-    err "  Empty response from Mimir."
-    return 1
-  fi
+  local has_data response
+  local _deadline=$(( $(date +%s) + 90 ))
+  while true; do
+    sleep 10
+    response=$(curl -sf -G \
+        -H "X-Scope-OrgID: ${tenant}" \
+        --data-urlencode "match[]=${match}" \
+        --data-urlencode "start=$(date -u -d '10 min ago' +%s)" \
+        --data-urlencode "end=$(date -u +%s)" \
+        --max-time 15 \
+        "${mimir_url}/prometheus/api/v1/series" 2>/dev/null || true)
+    if [ -z "$response" ]; then
+      err "  Empty response from Mimir."
+      return 1
+    fi
 
-  # Use python3 with .format() (no f-string escapes — those break under
-  # `python3 -c '...'` single-quoted bash invocation pre-3.12).
-  local has_data
-  has_data=$(printf '%s' "$response" | python3 -c '
+    # Use python3 with .format() (no f-string escapes — those break under
+    # `python3 -c '...'` single-quoted bash invocation pre-3.12).
+    has_data=$(printf '%s' "$response" | python3 -c '
 import json, sys
 try:
     body = json.load(sys.stdin)
@@ -496,32 +502,39 @@ else:
     print("OK:{}:{}".format(len(result), ",".join(names[:8])))
 ' 2>&1 || echo "PYERR")
 
-  case "$has_data" in
-    OK:*)
-      log "  OTLP histograms present in tenant (${has_data#OK:})"
-      ;;
-    EMPTY)
-      err "  Mimir returned status=success but no series matched ${match}"
-      err "  This means no OTLP duration histograms reached Mimir for this tenant."
-      err "  Inspect with:"
-      err "    curl -H 'X-Scope-OrgID: ${tenant}' '${mimir_url}/prometheus/api/v1/label/__name__/values'"
-      return 1
-      ;;
-    STATUS:*)
-      err "  Mimir query failed: ${has_data#STATUS:}"
-      return 1
-      ;;
-    PARSE_ERROR:*)
-      err "  JSON parse failure: ${has_data#PARSE_ERROR:}"
-      err "  Raw response: ${response:0:500}"
-      return 1
-      ;;
-    *)
-      err "  Unexpected response shape: ${has_data}"
-      err "  Raw response: ${response:0:500}"
-      return 1
-      ;;
-  esac
+    case "$has_data" in
+      OK:*)
+        log "  OTLP histograms present in tenant (${has_data#OK:})"
+        break
+        ;;
+      EMPTY)
+        if [ $(date +%s) -lt $_deadline ]; then
+          local _remaining=$(( _deadline - $(date +%s) ))
+          info "  Not yet — retrying (${_remaining}s remaining) ..."
+          continue
+        fi
+        err "  No OTLP duration histograms reached Mimir after 90s."
+        err "  This means no OTLP duration histograms reached Mimir for this tenant."
+        err "  Inspect with:"
+        err "    curl -H 'X-Scope-OrgID: ${tenant}' '${mimir_url}/prometheus/api/v1/label/__name__/values'"
+        return 1
+        ;;
+      STATUS:*)
+        err "  Mimir query failed: ${has_data#STATUS:}"
+        return 1
+        ;;
+      PARSE_ERROR:*)
+        err "  JSON parse failure: ${has_data#PARSE_ERROR:}"
+        err "  Raw response: ${response:0:500}"
+        return 1
+        ;;
+      *)
+        err "  Unexpected response shape: ${has_data}"
+        err "  Raw response: ${response:0:500}"
+        return 1
+        ;;
+    esac
+  done
 
   log "OTLP native-histogram smoke test passed."
 }
@@ -683,6 +696,17 @@ cmd_up() {
   }
   echo ""
 
+  # Tier 2c: Service Alerts (ai-horde-service-alerts)
+  log "═══ Tier 2c: ai-horde-service-alerts ═══"
+  log "Starting ai-horde-service-alerts ..."
+  dc_service_alerts up -d
+  wait_for_url "http://127.0.0.1:19810/healthz" "ai-horde-service-alerts" 60 || {
+    err "ai-horde-service-alerts did not start. Dumping logs:"
+    dc_service_alerts logs --tail=50
+    return 1
+  }
+  echo ""
+
   # Tier 3: Monitoring (optional)
   if [ "$WITH_MONITORING" = true ]; then
     log "═══ Tier 3: Monitoring Stack ═══"
@@ -749,6 +773,17 @@ cmd_up() {
   wait_for_url "http://127.0.0.1:80/" "HAProxy" 90 || {
     err "HAProxy did not start. Dumping logs:"
     dc_haproxy logs --tail=50
+    return 1
+  }
+  # The wait above returns as soon as the frontpage backend (aihorde_frontend)
+  # answers.  The API backend (horde_client_api) uses server-template with
+  # async DNS resolvers, so its health-check cycle starts separately and can
+  # lag by a few seconds.  Wait explicitly so the probe below doesn't race
+  # against a backend that hasn't yet passed its first check cycle.
+  wait_for_url "http://127.0.0.1:80/api/v2/status/heartbeat" "HAProxy → AI-Horde API backend" 30 || {
+    err "HAProxy API backend did not become ready within 30s."
+    err "  Check backend status at: http://localhost:8404/stats"
+    dc_haproxy logs --tail=20
     return 1
   }
   echo ""

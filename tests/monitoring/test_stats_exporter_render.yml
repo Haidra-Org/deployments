@@ -1,270 +1,151 @@
 ---
-# idempotency: skip
+# Test playbook: horde_stats_exporter role (Docker Compose render only).
 # risk-category: deploy-safety, security, fail-fast
-# Test playbook: horde_stats_exporter role (template rendering only)
 #
-# The horde_stats_exporter role always starts the systemd service and
-# bootstraps uv/venv, so we cannot include_role in a render-only test.
-# Instead we template the configuration files directly and validate the
-# rendered output — matching the pattern used by test_alloy_role.yml.
+# Play 1: Default rendering — verify exporter_config.yaml + docker-compose.yml
+#         render correctly with the GHCR image, loopback bind, healthcheck,
+#         and required labels.
+# Play 2: Image digest pin — verify compose ref becomes "image@sha256:..."
+#         when horde_stats_exporter_image_digest is set.
+# Play 3: Invalid digest — fail-fast guard.
 
-# ---------------------------------------------------------------------------
-# Play 1: Render config, service unit, and logrotate with defaults
-# ---------------------------------------------------------------------------
-- name: Test horde_stats_exporter - Config rendering (defaults)
+- name: Test horde_stats_exporter render (defaults)
   hosts: testhost
   become: true
   gather_facts: false
-
   vars:
-    horde_stats_exporter_user: horde-exporter
-    horde_stats_exporter_install_dir: /opt/horde-exporter
-    horde_stats_exporter_port: 9150
-    horde_stats_exporter_api_base_url: "https://aihorde.net/api/v2"
-    horde_stats_exporter_user_agent: "horde_prometheus_exporter"
-    horde_stats_exporter_api_timeout: 10
-    horde_stats_exporter_scrape_models: 8
-    horde_stats_exporter_scrape_workers: 300
-    horde_stats_exporter_scrape_performance: 2
-    horde_stats_exporter_scrape_stats: 120
-    horde_stats_exporter_scrape_modes: 30
-    horde_stats_exporter_scrape_teams: 300
-    horde_stats_exporter_log_level: INFO
-    horde_stats_exporter_log_file: /var/log/horde-stats/exporter.log
-
-  pre_tasks:
-    - name: Create exporter group
-      ansible.builtin.group:
-        name: "{{ horde_stats_exporter_user }}"
-        state: present
-
-    - name: Create exporter user
-      ansible.builtin.user:
-        name: "{{ horde_stats_exporter_user }}"
-        group: "{{ horde_stats_exporter_user }}"
-        system: true
-        create_home: false
-        shell: /usr/sbin/nologin
-
-    - name: Create exporter install directory
-      ansible.builtin.file:
-        path: "{{ horde_stats_exporter_install_dir }}"
-        state: directory
-        owner: "{{ horde_stats_exporter_user }}"
-        group: "{{ horde_stats_exporter_user }}"
-        mode: "0755"
-
-  tasks:
-    - name: Template exporter configuration
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/../../roles/horde_stats_exporter/templates/exporter_config.yaml.j2"
-        dest: "{{ horde_stats_exporter_install_dir }}/exporter_config.yaml"
-        owner: "{{ horde_stats_exporter_user }}"
-        group: "{{ horde_stats_exporter_user }}"
-        mode: "0644"
-
-    - name: Template systemd service unit
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/../../roles/horde_stats_exporter/templates/horde-exporter.service.j2"
-        dest: /etc/systemd/system/horde-exporter.service
-        mode: "0644"
-
-    - name: Template logrotate config
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/../../roles/horde_stats_exporter/templates/logrotate-horde-stats.j2"
-        dest: /etc/logrotate.d/horde-stats
-        mode: "0644"
+    horde_stats_exporter_start_services: false
+    horde_stats_exporter_base_dir: /opt/horde-stats-exporter-default
+  roles:
+    - horde_stats_exporter
 
   post_tasks:
-    # --- Exporter config assertions ---
-    - name: Read rendered exporter config
-      ansible.builtin.slurp:
-        src: "{{ horde_stats_exporter_install_dir }}/exporter_config.yaml"
-      register: _exporter_config
-
-    - name: Assert exporter config renders scrape intervals
-      ansible.builtin.assert:
-        that:
-          - "'models: 8' in (_exporter_config.content | b64decode)"
-          - "'workers: 300' in (_exporter_config.content | b64decode)"
-          - "'performance: 2' in (_exporter_config.content | b64decode)"
-          - "'stats: 120' in (_exporter_config.content | b64decode)"
-          - "'modes: 30' in (_exporter_config.content | b64decode)"
-          - "'teams: 300' in (_exporter_config.content | b64decode)"
-        fail_msg: "Exporter config must render all scrape interval groups"
-
-    - name: Assert exporter config renders API settings
-      ansible.builtin.assert:
-        that:
-          - "'base_url: \"https://aihorde.net/api/v2\"' in (_exporter_config.content | b64decode)"
-          - "'user_agent: \"horde_prometheus_exporter\"' in (_exporter_config.content | b64decode)"
-          - "'timeout: 10' in (_exporter_config.content | b64decode)"
-          - "'port: 9150' in (_exporter_config.content | b64decode)"
-          - "'log_level: INFO' in (_exporter_config.content | b64decode)"
-        fail_msg: "Exporter config must render API endpoint, user-agent, timeout, port, and log level"
-
-    - name: Assert exporter config has Ansible managed header
-      ansible.builtin.assert:
-        that:
-          - "'Managed by Ansible' in (_exporter_config.content | b64decode)"
-        fail_msg: "Exporter config must contain Ansible managed marker"
-
-    - name: Stat exporter config permissions
+    - name: Stat docker-compose.yml
       ansible.builtin.stat:
-        path: "{{ horde_stats_exporter_install_dir }}/exporter_config.yaml"
-      register: _config_stat
+        path: /opt/horde-stats-exporter-default/docker-compose.yml
+      register: _compose
 
-    - name: Assert exporter config ownership and permissions
+    - name: Assert docker-compose.yml exists with expected permissions
       ansible.builtin.assert:
         that:
-          - _config_stat.stat.mode == '0644'
-          - _config_stat.stat.pw_name == 'horde-exporter'
-          - _config_stat.stat.gr_name == 'horde-exporter'
-        fail_msg: "Exporter config must be 0644 owned by horde-exporter:horde-exporter"
+          - _compose.stat.exists
+          - _compose.stat.pw_name == "root"
+          - _compose.stat.mode == "0644"
+        fail_msg: "docker-compose.yml missing or wrong permissions"
 
-    # --- Systemd service unit assertions ---
-    - name: Read rendered service unit
+    - name: Read docker-compose.yml
       ansible.builtin.slurp:
-        src: /etc/systemd/system/horde-exporter.service
-      register: _service_unit
+        src: /opt/horde-stats-exporter-default/docker-compose.yml
+      register: _compose_content
 
-    - name: Assert service unit has correct ExecStart
+    - name: Assert compose has expected service shape
       ansible.builtin.assert:
         that:
-          - "'/opt/horde-exporter/venv/bin/horde-exporter' in (_service_unit.content | b64decode)"
-          - "'--config /opt/horde-exporter/exporter_config.yaml' in (_service_unit.content | b64decode)"
-        fail_msg: "Service unit ExecStart must reference venv entry-point and config path"
+          - "'stats-exporter:' in (_compose_content.content | b64decode)"
+          - "'container_name: horde-stats-exporter' in (_compose_content.content | b64decode)"
+          - "'image: ghcr.io/haidra-org/ai-horde-stats-exporter:main' in (_compose_content.content | b64decode)"
+          - "'127.0.0.1:9150:9150' in (_compose_content.content | b64decode)"
+          - "'horde.app: \"ai-horde-stats-exporter\"' in (_compose_content.content | b64decode)"
+          - "'horde.logs: \"true\"' in (_compose_content.content | b64decode)"
+          - "'/metrics' in (_compose_content.content | b64decode)"
+          - "'/etc/horde-stats-exporter/exporter_config.yaml:ro' in (_compose_content.content | b64decode)"
+        fail_msg: "Compose missing expected stats-exporter shape"
 
-    - name: Assert service unit runs as dedicated user
+    - name: Stat exporter_config.yaml
+      ansible.builtin.stat:
+        path: /opt/horde-stats-exporter-default/exporter_config.yaml
+      register: _config
+
+    - name: Assert exporter_config.yaml exists with expected permissions
       ansible.builtin.assert:
         that:
-          - "'User=horde-exporter' in (_service_unit.content | b64decode)"
-          - "'Group=horde-exporter' in (_service_unit.content | b64decode)"
-        fail_msg: "Service must run as the dedicated horde-exporter user"
+          - _config.stat.exists
+          - _config.stat.mode == "0644"
+        fail_msg: "exporter_config.yaml missing or wrong permissions"
 
-    - name: Assert service unit has security hardening
-      ansible.builtin.assert:
-        that:
-          - "'NoNewPrivileges=true' in (_service_unit.content | b64decode)"
-          - "'PrivateTmp=true' in (_service_unit.content | b64decode)"
-          - "'ProtectSystem=strict' in (_service_unit.content | b64decode)"
-          - "'ProtectHome=true' in (_service_unit.content | b64decode)"
-          - "'ReadWritePaths=' in (_service_unit.content | b64decode)"
-        fail_msg: "Service unit must include systemd security hardening directives"
-
-    - name: Assert service unit logs to correct file
-      ansible.builtin.assert:
-        that:
-          - "'StandardOutput=append:/var/log/horde-stats/exporter.log' in (_service_unit.content | b64decode)"
-          - "'StandardError=append:/var/log/horde-stats/exporter.log' in (_service_unit.content | b64decode)"
-        fail_msg: "Service unit must redirect stdout/stderr to the configured log file"
-
-    - name: Assert service unit has restart policy
-      ansible.builtin.assert:
-        that:
-          - "'Restart=always' in (_service_unit.content | b64decode)"
-          - "'RestartSec=10' in (_service_unit.content | b64decode)"
-        fail_msg: "Service unit must have restart-on-failure policy"
-
-    # --- Logrotate config assertions ---
-    - name: Read rendered logrotate config
+    - name: Read exporter_config.yaml
       ansible.builtin.slurp:
-        src: /etc/logrotate.d/horde-stats
-      register: _logrotate
+        src: /opt/horde-stats-exporter-default/exporter_config.yaml
+      register: _config_content
 
-    - name: Assert logrotate config content
+    - name: Assert config keys present
       ansible.builtin.assert:
         that:
-          - "'/var/log/horde-stats/exporter.log' in (_logrotate.content | b64decode)"
-          - "'rotate 30' in (_logrotate.content | b64decode)"
-          - "'compress' in (_logrotate.content | b64decode)"
-          - "'copytruncate' in (_logrotate.content | b64decode)"
-          - "'missingok' in (_logrotate.content | b64decode)"
-        fail_msg: "Logrotate config must reference the log file with rotation, compression, and copytruncate"
+          - "'scrape_intervals:' in (_config_content.content | b64decode)"
+          - "'base_url: \"https://aihorde.net/api/v2\"' in (_config_content.content | b64decode)"
+          - "'user_agent: \"horde_prometheus_exporter\"' in (_config_content.content | b64decode)"
+          - "'port: 9150' in (_config_content.content | b64decode)"
+        fail_msg: "exporter_config.yaml missing expected keys"
 
-# ---------------------------------------------------------------------------
-# Play 2: Render with custom scrape intervals and non-default port
-# ---------------------------------------------------------------------------
-- name: Test horde_stats_exporter - Custom configuration
+# ----------------------------------------------------------------------------
+# Play 2: Image digest pin renders image@sha256:...
+# ----------------------------------------------------------------------------
+- name: Test horde_stats_exporter render (image digest pin)
   hosts: testhost
   become: true
   gather_facts: false
-
   vars:
-    horde_stats_exporter_user: horde-exporter
-    horde_stats_exporter_install_dir: /opt/horde-exporter
-    horde_stats_exporter_port: 9999
-    horde_stats_exporter_api_base_url: "https://custom.horde.example/api/v2"
-    horde_stats_exporter_user_agent: "custom-exporter-agent"
-    horde_stats_exporter_api_timeout: 30
-    horde_stats_exporter_scrape_models: 15
-    horde_stats_exporter_scrape_workers: 600
-    horde_stats_exporter_scrape_performance: 5
-    horde_stats_exporter_scrape_stats: 240
-    horde_stats_exporter_scrape_modes: 60
-    horde_stats_exporter_scrape_teams: 600
-    horde_stats_exporter_log_level: DEBUG
-    horde_stats_exporter_log_file: /var/log/horde-stats/exporter.log
-
-  tasks:
-    - name: Template exporter configuration (custom values)
-      ansible.builtin.template:
-        src: "{{ playbook_dir }}/../../roles/horde_stats_exporter/templates/exporter_config.yaml.j2"
-        dest: "{{ horde_stats_exporter_install_dir }}/exporter_config.yaml"
-        owner: "{{ horde_stats_exporter_user }}"
-        group: "{{ horde_stats_exporter_user }}"
-        mode: "0644"
+    horde_stats_exporter_start_services: false
+    horde_stats_exporter_base_dir: /opt/horde-stats-exporter-pinned
+    horde_stats_exporter_image: "ghcr.io/haidra-org/ai-horde-stats-exporter:v0.3.0"
+    horde_stats_exporter_image_digest: "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+  roles:
+    - horde_stats_exporter
 
   post_tasks:
-    - name: Read rendered exporter config (custom)
+    - name: Read docker-compose.yml (pinned)
       ansible.builtin.slurp:
-        src: "{{ horde_stats_exporter_install_dir }}/exporter_config.yaml"
-      register: _custom_config
+        src: /opt/horde-stats-exporter-pinned/docker-compose.yml
+      register: _compose_content_pinned
 
-    - name: Assert custom port and API settings are rendered
+    - name: Assert compose ref includes digest suffix
       ansible.builtin.assert:
         that:
-          - "'port: 9999' in (_custom_config.content | b64decode)"
-          - "'base_url: \"https://custom.horde.example/api/v2\"' in (_custom_config.content | b64decode)"
-          - "'user_agent: \"custom-exporter-agent\"' in (_custom_config.content | b64decode)"
-          - "'timeout: 30' in (_custom_config.content | b64decode)"
-          - "'log_level: DEBUG' in (_custom_config.content | b64decode)"
-        fail_msg: "Custom API settings must be reflected in rendered config"
+          - "'image: ghcr.io/haidra-org/ai-horde-stats-exporter:v0.3.0@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789' in (_compose_content_pinned.content | b64decode)"
+        fail_msg: "Compose image must combine tag and digest pin"
 
-    - name: Assert custom scrape intervals are rendered
-      ansible.builtin.assert:
-        that:
-          - "'models: 15' in (_custom_config.content | b64decode)"
-          - "'workers: 600' in (_custom_config.content | b64decode)"
-          - "'performance: 5' in (_custom_config.content | b64decode)"
-          - "'stats: 240' in (_custom_config.content | b64decode)"
-          - "'modes: 60' in (_custom_config.content | b64decode)"
-          - "'teams: 600' in (_custom_config.content | b64decode)"
-        fail_msg: "Custom scrape intervals must be rendered in config"
-
-# ---------------------------------------------------------------------------
-# Play 3: Fail-fast on invalid install_source
-# ---------------------------------------------------------------------------
-- name: Test horde_stats_exporter - Fail-fast on invalid install source
+# ----------------------------------------------------------------------------
+# Play 3: Invalid digest is rejected fail-fast
+# ----------------------------------------------------------------------------
+- name: Test horde_stats_exporter render (invalid digest fail-fast)
   hosts: testhost
   become: true
   gather_facts: false
-
+  vars:
+    horde_stats_exporter_start_services: false
+    horde_stats_exporter_base_dir: /opt/horde-stats-exporter-baddigest
+    horde_stats_exporter_image_digest: "sha256:not-a-real-digest"
   tasks:
-    - name: Expect assertion failure for invalid install_source
+    - name: Run role with invalid digest (must fail at the guard)
       block:
-        - name: Run install_source validation with bad value
+        - name: Include role expecting failure
+          ansible.builtin.include_role:
+            name: horde_stats_exporter
+        - name: Force test failure if role accepted invalid digest
+          ansible.builtin.fail:
+            msg: "Role accepted an invalid image digest format — fail-fast guard is missing or broken"
+      rescue:
+        - name: Assert the failure came from the digest format guard
           ansible.builtin.assert:
             that:
-              - "'bogus' in ['git', 'wheel', 'local']"
+              # ansible_failed_result is populated by rescue. Confirm the
+              # failure was the digest assert (not, e.g., a typo elsewhere
+              # that would silently pass this test if we just rescued).
+              - ansible_failed_result.msg is defined
+              - ansible_failed_result.msg is search('digest')
+                or ansible_failed_result.msg is search('sha256')
             fail_msg: >-
-              horde_stats_exporter_install_source must be one of: git, wheel, local.
-              Got 'bogus'.
-
-        - name: Fail if assertion did not reject invalid source
-          ansible.builtin.fail:
-            msg: "Should have failed with invalid install_source"
-      rescue:
-        - name: Confirm expected failure
-          ansible.builtin.debug:
-            msg: "PASS — Fail-fast correctly rejected invalid install_source"
+              Role failed for the wrong reason — expected the
+              horde_stats_exporter_image_digest format guard to trigger.
+              Got: {{ ansible_failed_result }}
+        - name: Confirm no compose file was rendered for the invalid case
+          ansible.builtin.stat:
+            path: /opt/horde-stats-exporter-baddigest/docker-compose.yml
+          register: _baddigest_compose
+        - name: Assert fail-fast happened before any rendering
+          ansible.builtin.assert:
+            that:
+              - not _baddigest_compose.stat.exists
+            fail_msg: >-
+              Role rendered docker-compose.yml before failing on the
+              digest guard — the guard must run before template tasks.

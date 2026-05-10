@@ -1,7 +1,7 @@
 # horde_stats_exporter
 
 Deploys the [AI Horde Prometheus exporter](https://github.com/Haidra-Org/horde-exporters)
-as a systemd service. The exporter polls the AI Horde public API and exposes
+as a Docker Compose stack. The exporter polls the AI Horde public API and exposes
 metrics at a `/metrics` endpoint for Prometheus to scrape.
 
 > **Scope:** This exporter is specific to the AI Horde API. It is not a
@@ -9,21 +9,23 @@ metrics at a `/metrics` endpoint for Prometheus to scrape.
 
 ## What This Role Deploys
 
-- **horde-exporter** systemd service — polls the AI Horde API and serves
-  Prometheus metrics on the configured port
-- **horde-downsample** systemd timer (opt-in) — runs daily downsampling from
-  the application Mimir tenant into a public tenant at reduced resolution
-- **logrotate** config — rotates exporter log files
+- A Docker Compose project under `/opt/horde-stats-exporter/` that runs the
+  `ghcr.io/haidra-org/ai-horde-stats-exporter` image. The container publishes
+  `/metrics` on `127.0.0.1:9150` by default and uses journald logging with the
+  standard `horde.logs` / `horde.app` / `horde.component` labels.
+- A rendered `exporter_config.yaml` mounted read-only at
+  `/etc/horde-stats-exporter/exporter_config.yaml` inside the container.
 
-The exporter runs under a dedicated unprivileged system user and uses
-[uv](https://docs.astral.sh/uv/) to manage its own Python 3.12 environment.
+The stack runs `docker_compose_v2` against a single-service compose file. The
+in-container listener is fixed at `9150` (matches the image's `EXPOSE`); the
+host-side bind is controlled by the role's `listen` / `port` variables.
 
 ## Requirements
 
-- Python 3.x on the target host (for Ansible modules)
-- systemd-based Linux distribution
-- Network access to `https://aihorde.net` (or the configured API base URL)
-- [uv](https://docs.astral.sh/uv/) is installed automatically by the role
+- Docker Engine and the Compose v2 plugin (`docker compose`) on the target host
+- The `community.docker` collection (provided by `requirements.yml`)
+- Network access to `https://aihorde.net` (or the configured API base URL) and
+  to `ghcr.io` for image pulls
 
 ## Quick Start
 
@@ -32,8 +34,6 @@ The exporter runs under a dedicated unprivileged system user and uses
   become: true
   roles:
     - role: haidra.deployments.horde_stats_exporter
-      vars:
-        horde_stats_exporter_port: 9150
 ```
 
 Then configure Prometheus to scrape it:
@@ -51,57 +51,45 @@ for the full integrated stack.
 
 ## Role Variables
 
-### Exporter Settings
+### Image and Container
 
-| Variable               | Default                                         | Description                          |
-| ---------------------- | ----------------------------------------------- | ------------------------------------ |
-| `horde_stats_exporter_user`        | `horde-exporter`                                | Unprivileged system user             |
-| `horde_stats_exporter_install_dir` | `/opt/horde-exporter`                           | Installation directory               |
-| `horde_stats_exporter_repo_url`    | `https://github.com/Haidra-Org/horde-exporters` | Git repository                       |
-| `horde_stats_exporter_repo_ref`    | `096c1fb8451b27e0a3dd0fc32092dda92e0e52e3`      | Git ref (branch, tag, or commit SHA) |
-| `horde_stats_exporter_port`        | `9150`                                          | Metrics endpoint port                |
-| `horde_stats_exporter_log_level`   | `INFO`                                          | Log verbosity                        |
-| `horde_stats_exporter_log_file`    | `/var/log/horde-stats/exporter.log`             | Log file path                        |
+| Variable                              | Default                                                  | Description                                                      |
+| ------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------- |
+| `horde_stats_exporter_image`          | `ghcr.io/haidra-org/ai-horde-stats-exporter:main`        | Container image reference                                        |
+| `horde_stats_exporter_image_digest`   | `""`                                                     | Optional `sha256:...` digest pin appended as `<image>@<digest>`  |
+| `horde_stats_exporter_container_name` | `horde-stats-exporter`                                   | Container name                                                   |
+| `horde_stats_exporter_base_dir`       | `/opt/horde-stats-exporter`                              | Compose project directory                                        |
+| `horde_stats_exporter_listen`         | `127.0.0.1`                                              | Host bind address for the published port                         |
+| `horde_stats_exporter_port`           | `9150`                                                   | Host port (mapped to container `9150`)                           |
+| `horde_stats_exporter_log_driver`     | `journald`                                               | Compose logging driver                                           |
+| `horde_stats_exporter_log_tag`        | `horde-stats-exporter`                                   | Journald tag (when driver is `journald`)                         |
+| `horde_stats_exporter_start_services` | `true`                                                   | When `false`, render templates only (used by render tests)       |
 
-For reproducible deployments, pin `horde_stats_exporter_repo_ref` to a release tag or
-commit SHA.
+For reproducible deployments, pin `horde_stats_exporter_image_digest` to the
+digest emitted by the GHCR release manifest. The role rejects any value that
+does not match `^sha256:[0-9a-f]{64}$`.
 
 ### API Configuration
 
-| Variable                | Default                      | Description                   |
-| ----------------------- | ---------------------------- | ----------------------------- |
+| Variable                            | Default                      | Description                   |
+| ----------------------------------- | ---------------------------- | ----------------------------- |
 | `horde_stats_exporter_api_base_url` | `https://aihorde.net/api/v2` | AI Horde API base URL         |
 | `horde_stats_exporter_api_timeout`  | `10`                         | API request timeout (seconds) |
 | `horde_stats_exporter_user_agent`   | `horde_prometheus_exporter`  | HTTP User-Agent header        |
+| `horde_stats_exporter_log_level`    | `INFO`                       | Exporter log level            |
 
 ### Scrape Intervals
 
 Each metric group is polled on its own interval (seconds):
 
-| Variable                      | Default | What It Collects                      |
-| ----------------------------- | ------- | ------------------------------------- |
+| Variable                                  | Default | What It Collects                      |
+| ----------------------------------------- | ------- | ------------------------------------- |
 | `horde_stats_exporter_scrape_models`      | `8`     | Model queue depths and worker counts  |
 | `horde_stats_exporter_scrape_workers`     | `300`   | Individual worker stats               |
 | `horde_stats_exporter_scrape_performance` | `2`     | Global queue and performance counters |
 | `horde_stats_exporter_scrape_stats`       | `120`   | Historical generation statistics      |
 | `horde_stats_exporter_scrape_modes`       | `30`    | Heartbeat and maintenance mode flags  |
 | `horde_stats_exporter_scrape_teams`       | `300`   | Team-level statistics                 |
-
-### Downsampling (Opt-in)
-
-The downsampling timer reads high-resolution data from the application Mimir
-tenant and writes a lower-resolution copy to the public tenant, suitable for
-public-facing dashboards.
-
-| Variable                            | Default                 | Description                     |
-| ----------------------------------- | ----------------------- | ------------------------------- |
-| `horde_stats_exporter_enable_downsampling`      | `true`                  | Enable daily downsampling timer |
-| `horde_stats_exporter_downsample_schedule`      | `daily`                 | systemd calendar spec           |
-| `horde_stats_exporter_prometheus_url`           | `http://localhost:9090` | Prometheus read endpoint        |
-| `horde_stats_exporter_downsample_source_tenant` | `ai-horde-app`          | Source Mimir tenant             |
-| `horde_stats_exporter_downsample_target_tenant` | `ai-horde-public`       | Target Mimir tenant             |
-| `horde_stats_exporter_downsample_mimir_url`     | `http://localhost:9009` | Mimir write endpoint            |
-| `horde_stats_exporter_downsample_resolution`    | `5m`                    | Output resolution               |
 
 ## Metrics Exposed
 
@@ -127,18 +115,24 @@ All metrics use consistent `type=image|text|interrogator` labels.
 ## Verification
 
 ```bash
-# Service status
-sudo systemctl status horde-exporter
+# Container status
+sudo docker ps --filter name=horde-stats-exporter
 
-# Logs
-sudo journalctl -u horde-exporter -f
+# Logs (journald via the journald log driver)
+sudo journalctl CONTAINER_NAME=horde-stats-exporter -f
 
 # Test metrics endpoint
 curl -s http://localhost:9150/metrics | head -20
-
-# Downsampling timer (if enabled)
-systemctl list-timers horde-downsample*
 ```
+
+## Migration From the Legacy systemd Service
+
+Earlier revisions of this role installed the exporter as a uv-managed
+systemd service. See [DEPLOY_NOTES.md](../../DEPLOY_NOTES.md) for the one-off
+cleanup steps (`systemctl disable --now horde-exporter.service`, removal of
+the unit and `/opt/horde-exporter`) that must be run on existing monitoring
+hosts before re-applying this role. Prometheus scrape configuration does not
+change — the new container publishes the same `localhost:9150/metrics`.
 
 ## Related Documentation
 

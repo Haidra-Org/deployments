@@ -1,0 +1,78 @@
+---
+# horde_service_alerts role defaults
+# See README.md for variable documentation.
+
+# ── Service lifecycle ────────────────────────────────────────────────────────
+horde_service_alerts_start_services: true
+
+# ── Filesystem layout ────────────────────────────────────────────────────────
+horde_service_alerts_base_dir: "/opt/ai-horde-service-alerts"
+
+# ── Container image ──────────────────────────────────────────────────────────
+horde_service_alerts_image: "ghcr.io/haidra-org/ai-horde-service-alerts:main"
+# Optional immutable digest pin appended via '@'. When set, must match
+# 'sha256:<64 hex chars>'. Leave empty to use the bare tag from
+# horde_service_alerts_image.
+horde_service_alerts_image_digest: ""
+horde_service_alerts_container_name: "horde-service-alerts"
+horde_service_alerts_log_driver: "journald"
+horde_service_alerts_log_tag: "ai-horde-service-alerts"
+
+# ── Network bind for the FastAPI service ────────────────────────────────────
+horde_service_alerts_listen: "127.0.0.1"
+horde_service_alerts_port: 19810
+
+# ── Internal service env (HORDE_ALERTS_*) ───────────────────────────────────
+# Upstream signal sources. Defaults assume same-host Alertmanager + Mimir
+# reachable via the Docker host gateway.
+horde_service_alerts_alertmanager_base_url: "http://host.docker.internal:9093"
+horde_service_alerts_mimir_base_url: "http://host.docker.internal:9009"
+horde_service_alerts_mimir_tenant_default: "infrastructure"
+# Mapping of component name -> PromQL instant query (rendered as JSON).
+# Used by /api/v1/public/status to compute coarse component health badges.
+horde_service_alerts_mimir_curated_queries: {}
+
+# Optional HTTP basic auth presented by the service-alerts client when calling
+# upstream Alertmanager + Mimir. Required when reaching them through the
+# horde_monitoring service-alerts egress HAProxy frontend; leave empty for
+# direct loopback access. These should match the monitoring-side
+# horde_monitoring_service_alerts_egress_auth_* credentials.
+horde_service_alerts_upstream_basic_auth_user: ""
+horde_service_alerts_upstream_basic_auth_password: ""
+
+# ── AI Horde verifier ───────────────────────────────────────────────────────
+horde_service_alerts_aihorde_base_url: "https://aihorde.net/api/"
+horde_service_alerts_aihorde_client_agent: "ai-horde-service-alerts:0.1.0:haidra"
+horde_service_alerts_moderator_cache_ttl_seconds: 60
+horde_service_alerts_moderator_cache_negative_ttl_seconds: 15
+horde_service_alerts_moderator_cache_max_entries: 1024
+
+# ── Public projection allowlists ────────────────────────────────────────────
+# Label / annotation keys retained when alerts are projected to the
+# unauthenticated /api/v1/public/* responses.
+horde_service_alerts_public_alert_label_allowlist:
+  - "alertname"
+  - "severity"
+  - "component"
+  - "service"
+horde_service_alerts_public_annotation_allowlist:
+  - "summary"
+
+# ── HTTP behaviour ──────────────────────────────────────────────────────────
+horde_service_alerts_request_timeout_seconds: 5.0
+horde_service_alerts_cors_allow_origins: []
+horde_service_alerts_enable_internal_swagger_docs: true
+horde_service_alerts_log_level: "info"
+
+# Free-form passthrough for keys not modelled above (rendered verbatim into .env).
+horde_service_alerts_env_overrides: {}
+
+# ── HAProxy conf.d integration ──────────────────────────────────────────────
+horde_service_alerts_configure_haproxy_backend: false
+horde_service_alerts_haproxy_confd_path: "/etc/haproxy/conf.d/horde-service-alerts.cfg"
+# Path prefix at which the public API is exposed via HAProxy. The fragment
+# adds an ACL "use_backend" rule using this prefix on whichever frontend the
+# operator already provides; it does NOT define its own listening frontend.
+horde_service_alerts_haproxy_public_path_prefix: "/api/service-alerts/"
+horde_service_alerts_haproxy_backend_name: "horde_service_alerts_backend"
+horde_service_alerts_haproxy_acl_name: "is_horde_service_alerts"

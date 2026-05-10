@@ -600,8 +600,9 @@ horde_monitoring_configure_service_alerts_egress_frontend: false
 # frontend loopback-only; override to 0.0.0.0 for off-host service-alerts.
 horde_monitoring_service_alerts_egress_listen: "127.0.0.1"
 horde_monitoring_service_alerts_egress_port: 9494
-# Basic auth credentials — override in vault. Must match
-# horde_service_alerts_upstream_basic_auth_user / password on the consumer.
+# Basic auth credentials expected by the monitoring-side HAProxy egress
+# frontend. Override in vault. The remote horde_service_alerts consumer sends
+# the matching credentials via horde_service_alerts_upstream_basic_auth_*.
 horde_monitoring_service_alerts_egress_auth_user: "service-alerts"
 horde_monitoring_service_alerts_egress_auth_password: "changeme-service-alerts-egress"
 

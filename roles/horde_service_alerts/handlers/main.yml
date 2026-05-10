@@ -1,0 +1,17 @@
+---
+# Handlers for horde_service_alerts role.
+
+- name: Restart ai-horde-service-alerts Docker stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ horde_service_alerts_base_dir }}"
+    state: present
+    pull: always
+    build: never
+  become: true
+  when: horde_service_alerts_start_services | bool
+
+- name: Reload HAProxy
+  ansible.builtin.service:
+    name: haproxy
+    state: reloaded
+  become: true

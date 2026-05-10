@@ -1,0 +1,61 @@
+---
+# requires: docker-daemon
+# idempotency: skip
+# Test playbook: horde_service_alerts role (integration, starts container).
+#
+# Boots the FastAPI service-alerts container with the upstream URLs pointed
+# at unreachable hosts (the role does not require Alertmanager/Mimir to be
+# online for /healthz to succeed) and asserts the public + health endpoints
+# come up.
+
+- name: Test horde_service_alerts integration (boot + healthz)
+  hosts: testhost
+  become: true
+  gather_facts: true
+  vars:
+    horde_service_alerts_start_services: true
+    horde_service_alerts_base_dir: /opt/horde-service-alerts-integration
+    # Use unrouted addresses so upstream calls fail fast; /healthz must
+    # remain green regardless of upstream reachability.
+    horde_service_alerts_alertmanager_base_url: "http://127.0.0.1:65431"
+    horde_service_alerts_mimir_base_url: "http://127.0.0.1:65432"
+    horde_service_alerts_log_driver: "local"
+  roles:
+    - horde_service_alerts
+
+  post_tasks:
+    - name: Assert /healthz returns 200
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:19810/healthz"
+        method: GET
+        status_code: 200
+      register: _healthz
+
+    - name: Assert /healthz body declares status ok
+      ansible.builtin.assert:
+        that:
+          - _healthz.json.status == "ok"
+        fail_msg: >-
+          /healthz must return status=ok. Got: {{ _healthz.json }}
+
+    - name: Assert public status endpoint responds
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:19810/api/v1/public/status"
+        method: GET
+        # Upstream Alertmanager is intentionally unreachable, so a 5xx is
+        # acceptable here; we only care that the route is wired.
+        status_code: [200, 502, 503, 504]
+      register: _public_status
+
+    - name: Assert internal route requires authentication
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:19810/api/v1/internal/alerts"
+        method: GET
+        status_code: 401
+        return_content: false
+
+    - name: Tear down service-alerts stack
+      community.docker.docker_compose_v2:
+        project_src: "{{ horde_service_alerts_base_dir }}"
+        state: absent
+      become: true

@@ -1,0 +1,76 @@
+---
+# horde_service_alerts role entry point.
+
+- name: Validate required image variable
+  ansible.builtin.assert:
+    that:
+      - horde_service_alerts_image | default('') | length > 0
+    fail_msg: >-
+      horde_service_alerts_image must be defined (full container image
+      reference, e.g. ghcr.io/haidra-org/ai-horde-service-alerts:<tag>).
+
+- name: Validate image digest format when provided
+  ansible.builtin.assert:
+    that:
+      - horde_service_alerts_image_digest is match('^sha256:[0-9a-f]{64}$')
+    fail_msg: >-
+      horde_service_alerts_image_digest must be empty or match
+      'sha256:<64 hex chars>'.
+  when: (horde_service_alerts_image_digest | default('') | length) > 0
+
+- name: Validate upstream basic auth pairing
+  ansible.builtin.assert:
+    that:
+      - (horde_service_alerts_upstream_basic_auth_user | length > 0) ==
+        (horde_service_alerts_upstream_basic_auth_password | length > 0)
+    fail_msg: >-
+      horde_service_alerts_upstream_basic_auth_user and
+      horde_service_alerts_upstream_basic_auth_password must be either both
+      set or both empty.
+
+- name: Validate upstream URLs render to non-empty strings
+  ansible.builtin.assert:
+    that:
+      - (horde_service_alerts_alertmanager_base_url | default('') | string | length) > 0
+      - (horde_service_alerts_mimir_base_url | default('') | string | length) > 0
+      - horde_service_alerts_alertmanager_base_url is match('^https?://')
+      - horde_service_alerts_mimir_base_url is match('^https?://')
+    fail_msg: >-
+      horde_service_alerts_alertmanager_base_url and
+      horde_service_alerts_mimir_base_url must each render to a non-empty
+      http(s):// URL. A common cause of an empty/garbled value is a Jinja
+      `hostvars[...]` lookup against a missing var — add `| default(...)`
+      to the derivation in group_vars.
+
+      Currently resolved:
+        alertmanager_base_url={{ horde_service_alerts_alertmanager_base_url | default('<unset>') }}
+        mimir_base_url={{ horde_service_alerts_mimir_base_url | default('<unset>') }}
+
+- name: Deploy ai-horde-service-alerts via Docker Compose
+  ansible.builtin.include_tasks: docker.yml
+
+- name: Configure HAProxy conf.d drop-in for service-alerts
+  when: horde_service_alerts_configure_haproxy_backend | bool
+  block:
+    - name: Bootstrap HAProxy conf.d systemd override
+      ansible.builtin.include_role:
+        name: _haproxy_confd_bootstrap
+
+    - name: Template service-alerts HAProxy conf.d fragment
+      ansible.builtin.template:
+        src: service-alerts-haproxy.cfg.j2
+        dest: "{{ horde_service_alerts_haproxy_confd_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+      notify:
+        - Reload HAProxy
+
+    - name: Validate full HAProxy configuration (haproxy.cfg + all conf.d fragments)
+      ansible.builtin.command: >-
+        /usr/sbin/haproxy -c
+        -f /etc/haproxy/haproxy.cfg
+        -f /etc/haproxy/conf.d/
+      changed_when: false
+      become: true

@@ -34,6 +34,9 @@
     horde_model_reference_replicate_mode: "PRIMARY"
     horde_model_reference_github_seed_enabled: false
 
+    horde_service_alerts_base_dir: /tmp/fullstack-test/service-alerts
+    horde_service_alerts_start_services: false
+
   tasks:
     - name: Create mock AI-Horde source directory
       ansible.builtin.file:
@@ -64,6 +67,12 @@
         name: horde_model_reference
       vars:
         horde_model_reference_start_services: false
+
+    - name: Run horde_service_alerts role
+      ansible.builtin.include_role:
+        name: horde_service_alerts
+      vars:
+        horde_service_alerts_start_services: false
 
   post_tasks:
     - name: Assert AI-Horde compose exists
@@ -201,6 +210,45 @@
           - "'horde-stack' in (frontpage_overlay_content.content | b64decode)"
           - "'external: true' in (frontpage_overlay_content.content | b64decode)"
         fail_msg: "Frontpage overlay missing frontpage service or horde-stack network"
+
+    - name: Assert service-alerts compose exists
+      ansible.builtin.stat:
+        path: /tmp/fullstack-test/service-alerts/docker-compose.yml
+      register: service_alerts_compose
+    - name: Verify service-alerts compose exists
+      ansible.builtin.assert:
+        that: service_alerts_compose.stat.exists
+        fail_msg: "service-alerts docker-compose.yml not rendered"
+
+    - name: Assert service-alerts network overlay exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../local-deploy/static/service-alerts/docker-compose.network-overlay.yml"
+      register: service_alerts_overlay
+    - name: Verify service-alerts overlay exists
+      ansible.builtin.assert:
+        that: service_alerts_overlay.stat.exists
+        fail_msg: "service-alerts network overlay not found"
+
+    - name: Read service-alerts overlay
+      ansible.builtin.slurp:
+        path: "{{ playbook_dir }}/../../local-deploy/static/service-alerts/docker-compose.network-overlay.yml"
+      register: service_alerts_overlay_content
+
+    - name: Assert service-alerts overlay attaches to horde-stack
+      ansible.builtin.assert:
+        that:
+          - "'service-alerts' in (service_alerts_overlay_content.content | b64decode)"
+          - "'horde-stack' in (service_alerts_overlay_content.content | b64decode)"
+          - "'external: true' in (service_alerts_overlay_content.content | b64decode)"
+        fail_msg: "service-alerts overlay missing service or horde-stack network"
+
+    - name: Assert HAProxy routes service-alerts
+      ansible.builtin.assert:
+        that:
+          - "'horde_service_alerts' in (haproxy_content.content | b64decode)"
+          - "'service-alerts:19810' in (haproxy_content.content | b64decode)"
+          - "'is_service_alerts' in (haproxy_content.content | b64decode)"
+        fail_msg: "HAProxy config missing service-alerts backend or path ACL"
 
     - name: Read Exporter network overlay
       ansible.builtin.slurp:

@@ -1,103 +1,55 @@
 ---
 # Default variables for horde_stats_exporter role
 #
-# This role deploys the AI Horde Prometheus exporter as a systemd service.
-# It polls the AI Horde public API and exposes metrics at /metrics for
-# Prometheus to scrape. Uses uv to manage its own Python 3.12 environment.
+# Deploys the AI Horde Prometheus exporter as a Docker Compose stack on the
+# monitoring host. The container exposes /metrics on
+# horde_stats_exporter_port (default 9150) for Prometheus to scrape.
 #
 # See roles/horde_stats_exporter/README.md for full documentation.
 
 # ---------------------------------------------------------------------------
-# User and directories
+# Service lifecycle
 # ---------------------------------------------------------------------------
-# Dedicated unprivileged system user — created automatically by the role.
-horde_stats_exporter_user: horde-exporter
-horde_stats_exporter_install_dir: /opt/horde-exporter
+horde_stats_exporter_start_services: true
 
 # ---------------------------------------------------------------------------
-# Installation source
+# Filesystem layout
 # ---------------------------------------------------------------------------
-# Source mode determines how the exporter package is installed:
-#   wheel - install a pre-built wheel from a GitHub Release (recommended)
-#   git   - install from a git repo via uv pip (legacy)
-#   local - install from a local filesystem path (sdist, wheel, or editable)
-horde_stats_exporter_install_source: "wheel"
+horde_stats_exporter_base_dir: "/opt/horde-stats-exporter"
 
-# Pinned release tag for the horde-exporters project.
-# In wheel mode the role downloads the release manifest from this tag and
-# resolves the actual wheel filename and checksum automatically.
-# The sub-package version inside the wheel may differ from this tag.
-horde_stats_exporter_release_version: "v0.1.2"
-
-# --- wheel mode settings ---
-# GitHub repository that hosts the releases.
-horde_stats_exporter_release_repo: "Haidra-Org/horde-exporters"
-# Name of the Python distribution to resolve from the release manifest.
-# Must match the wheel's distribution name (underscores, not hyphens).
-horde_stats_exporter_wheel_package_name: "ai_horde_stats_exporter"
-# Override: set a full URL to skip manifest resolution entirely.
-# When empty, the role derives the URL from the manifest.
-horde_stats_exporter_wheel_url: ""
-# Override: set a sha256 checksum to skip manifest resolution for checksum.
-# When empty, the role takes the checksum from the manifest.
-horde_stats_exporter_wheel_checksum: ""
-
-# --- git mode settings (legacy) ---
-# The exporter is installed directly from GitHub via uv.
-# Pin horde_stats_exporter_repo_ref to a release tag or commit SHA for reproducibility.
-horde_stats_exporter_repo_url: "https://github.com/Haidra-Org/horde-exporters"
-horde_stats_exporter_repo_ref: "096c1fb8451b27e0a3dd0fc32092dda92e0e52e3"
-
-# --- local mode settings ---
-# Filesystem path on the target host (directory, sdist, or wheel file).
-# Installed via `uv pip install <path>`.
-horde_stats_exporter_local_path: ""
+# ---------------------------------------------------------------------------
+# Container image
+# ---------------------------------------------------------------------------
+# Rolling tag from the horde-exporters repo (image-publish-main workflow).
+# Pin to a release tag (e.g. v0.3.0) for reproducible deployments, or set
+# horde_stats_exporter_image_digest to append an immutable @sha256:... pin.
+horde_stats_exporter_image: "ghcr.io/haidra-org/ai-horde-stats-exporter:main"
+horde_stats_exporter_image_digest: ""
+horde_stats_exporter_container_name: "horde-stats-exporter"
+horde_stats_exporter_log_driver: "journald"
+horde_stats_exporter_log_tag: "ai-horde-stats-exporter"
 
 # ---------------------------------------------------------------------------
 # Exporter configuration
 # ---------------------------------------------------------------------------
-# Port where the /metrics endpoint is served.
+# Bind address for the published Docker port mapping.
+horde_stats_exporter_listen: "127.0.0.1"
 horde_stats_exporter_port: 9150
 horde_stats_exporter_api_base_url: "https://aihorde.net/api/v2"
 horde_stats_exporter_user_agent: "horde_prometheus_exporter"
-# API request timeout in seconds.
 horde_stats_exporter_api_timeout: 10
 
 # ---------------------------------------------------------------------------
 # Scrape intervals (seconds)
 # ---------------------------------------------------------------------------
-# Each metric group is polled independently at its own interval.
-horde_stats_exporter_scrape_models: 8  # Model queue depths and worker counts
-horde_stats_exporter_scrape_workers: 300  # Individual worker statistics
-horde_stats_exporter_scrape_performance: 2  # Global queue and performance counters
-horde_stats_exporter_scrape_stats: 120  # Historical generation statistics
-horde_stats_exporter_scrape_modes: 30  # Heartbeat and maintenance mode flags
-horde_stats_exporter_scrape_teams: 300  # Team-level statistics
-
-# ---------------------------------------------------------------------------
-# Downsampling (opt-in)
-# ---------------------------------------------------------------------------
-# Reads high-resolution data from the application Mimir tenant and writes a
-# lower-resolution copy to the public tenant for public-facing dashboards.
-horde_stats_exporter_enable_downsampling: true
-horde_stats_exporter_downsample_schedule: daily
-horde_stats_exporter_prometheus_url: "http://localhost:9090"
-horde_stats_exporter_downsample_source_tenant: "ai-horde-app"
-horde_stats_exporter_downsample_target_tenant: "ai-horde-public"
-horde_stats_exporter_downsample_mimir_url: "http://localhost:9009"
-horde_stats_exporter_downsample_resolution: "5m"
-
-# ---------------------------------------------------------------------------
-# uv installer pinning  (installation logic: roles/_uv_bootstrap)
-# ---------------------------------------------------------------------------
-horde_stats_exporter_uv_version: "0.11.2"
-# Shared directory for uv managed-python installs.  Must be readable by the
-# service user — do NOT place under /root.
-horde_stats_exporter_uv_python_install_dir: /opt/uv-python
-horde_stats_exporter_uv_installer_checksum: "sha256:a6ccba649ac029ce18500400019d60de389838d13a6751aa2908ede1b2aa3a87"
+horde_stats_exporter_scrape_models: 8
+horde_stats_exporter_scrape_workers: 300
+horde_stats_exporter_scrape_performance: 2
+horde_stats_exporter_scrape_stats: 120
+horde_stats_exporter_scrape_modes: 30
+horde_stats_exporter_scrape_teams: 300
 
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 horde_stats_exporter_log_level: INFO
-horde_stats_exporter_log_file: /var/log/horde-stats/exporter.log

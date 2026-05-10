@@ -109,77 +109,31 @@
         _frontpage_defaults: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../roles/aihorde_frontpage/defaults/main.yml') | from_yaml }}"
         _regen_defaults: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../roles/horde_regen_worker/defaults/main.yml') | from_yaml }}"
         _monitoring_defaults: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../roles/horde_monitoring/defaults/main.yml') | from_yaml }}"
-        _exporter_defaults: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../roles/horde_stats_exporter/defaults/main.yml') | from_yaml }}"
 
     - name: Assert all role source refs are pinned to full SHA (not floating)
       ansible.builtin.assert:
         that:
           - _frontpage_defaults.aihorde_frontpage_repo_version is regex('^[0-9a-f]{40}$')
           - _regen_defaults.horde_regen_worker_repo_version is regex('^[0-9a-f]{40}$')
-          # Dashboard and exporter git refs only required when source mode is 'git' (default)
+          # Dashboard git refs only required when source mode is 'git' (default).
           - >-
             _monitoring_defaults.horde_monitoring_grafana_dashboards_source | default('git') != 'git'
             or _monitoring_defaults.horde_monitoring_grafana_dashboards_repo_ref is regex('^[0-9a-f]{40}$')
-          - >-
-            _exporter_defaults.horde_stats_exporter_install_source | default('git') != 'git'
-            or _exporter_defaults.horde_stats_exporter_repo_ref is regex('^[0-9a-f]{40}$')
         fail_msg: >-
           All role defaults must pin source repos to full 40-char SHA commits
           (no branch names, no short hashes) when using git source mode.
 
-    - name: Assert dashboard and exporter source modes are valid
+    - name: Assert dashboard source mode is valid
       ansible.builtin.assert:
         that:
           - _monitoring_defaults.horde_monitoring_grafana_dashboards_source | default('git') in ['git', 'release', 'local']
-          - _exporter_defaults.horde_stats_exporter_install_source | default('git') in ['git', 'wheel', 'local']
         fail_msg: >-
-          Dashboard source must be git|release|local; exporter install source must be git|wheel|local.
+          Dashboard source must be git|release|local.
 
-    - name: Assert exporter uv installer has checksum and version pinned
-      ansible.builtin.assert:
-        that:
-          - _exporter_defaults.horde_stats_exporter_uv_version is defined
-          - _exporter_defaults.horde_stats_exporter_uv_version is regex('^[0-9]+\.[0-9]+')
-          - _exporter_defaults.horde_stats_exporter_uv_installer_checksum is regex('^sha256:[0-9a-f]{64}$')
-        fail_msg: >-
-          horde_stats_exporter must pin horde_stats_exporter_uv_version and
-          horde_stats_exporter_uv_installer_checksum in defaults.
-
-# ── Exporter template contracts ──────────────────────────────
-
-- name: Validate horde_stats_exporter template contracts
-  hosts: localhost
-  connection: local
-  gather_facts: false
-  tasks:
-    - name: Read logrotate template
-      ansible.builtin.slurp:
-        path: "{{ playbook_dir }}/../../roles/horde_stats_exporter/templates/logrotate-horde-stats.j2"
-      register: _logrotate_raw
-
-    - name: Assert logrotate uses copytruncate (no service restart needed)
-      ansible.builtin.assert:
-        that:
-          - "'copytruncate' in (_logrotate_raw.content | b64decode)"
-          - "'systemctl restart' not in (_logrotate_raw.content | b64decode)"
-          - "'systemctl reload' not in (_logrotate_raw.content | b64decode)"
-        fail_msg: >-
-          Logrotate must use copytruncate for services using StandardOutput=append:
-          to avoid needing service restarts for log rotation.
-
-    - name: Read downsample service template
-      ansible.builtin.slurp:
-        path: "{{ playbook_dir }}/../../roles/horde_stats_exporter/templates/horde-downsample.service.j2"
-      register: _downsample_raw
-
-    - name: Assert downsample service uses venv/ (not .venv/)
-      ansible.builtin.assert:
-        that:
-          - "'/venv/bin/' in (_downsample_raw.content | b64decode)"
-          - "'/.venv/bin/' not in (_downsample_raw.content | b64decode)"
-        fail_msg: >-
-          Downsample service ExecStart must reference venv/ (not .venv/)
-          to match the virtualenv created by the role.
+# Note: horde_stats_exporter contracts (image pinning, digest format, label
+# invariants) live in tests/monitoring/test_stats_exporter_policy_contracts.yml
+# now that the role consumes a published GHCR image instead of installing from
+# git/wheel/local sources.
 
 # ── Monitoring flag-combination validation contract ──────────
 

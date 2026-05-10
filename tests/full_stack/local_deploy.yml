@@ -63,6 +63,9 @@
       KUDOS_TRUST_THRESHOLD: "100"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy:4318"
       PYROSCOPE_SERVER_ADDRESS: "http://pyroscope:4040"
+      # Flush metrics every 10 s so the OTLP smoke-test probe doesn't have to
+      # wait for the 60 s production default before querying Mimir.
+      OTEL_METRIC_EXPORT_INTERVAL: "10000"
 
     aihorde_frontpage_start_services: false
     aihorde_frontpage_build_config: local
@@ -84,10 +87,24 @@
     horde_model_reference_port: 19800
     horde_model_reference_log_driver: "local"
 
+    horde_service_alerts_base_dir: "{{ playbook_dir }}/../../local-deploy/runtime/service-alerts"
+    horde_service_alerts_start_services: false
+    horde_service_alerts_listen: "127.0.0.1"
+    horde_service_alerts_port: 19810
+    horde_service_alerts_log_driver: "local"
+    # In local-deploy, monitoring runs as sibling containers attached to the
+    # shared `horde-stack` network.  Override the upstream URLs so the
+    # service-alerts container reaches them by service name (and only when
+    # the operator has actually enabled --with-monitoring; the role tolerates
+    # unreachable upstreams via /healthz).
+    horde_service_alerts_alertmanager_base_url: "http://alertmanager:9093"
+    horde_service_alerts_mimir_base_url: "http://mimir:9009"
+
   roles:
     - ai_horde
     - aihorde_frontpage
     - horde_model_reference
+    - horde_service_alerts
 
   post_tasks:
     - name: Ensure HAProxy config directory exists
