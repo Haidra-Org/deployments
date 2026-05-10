@@ -1,0 +1,35 @@
+# {{ ansible_managed }}
+{# Compose image ref: append @<digest> when set, otherwise use the bare ref. #}
+{%- set _image_ref = horde_stats_exporter_image
+                     ~ ('@' ~ horde_stats_exporter_image_digest
+                        if (horde_stats_exporter_image_digest | default('') | length) > 0
+                        else '') -%}
+services:
+  stats-exporter:
+    image: {{ _image_ref }}
+    container_name: {{ horde_stats_exporter_container_name }}
+    restart: unless-stopped
+    labels:
+      horde.logs: "true"
+      horde.app: "ai-horde-stats-exporter"
+      horde.component: "exporter"
+    ports:
+      - "{{ horde_stats_exporter_listen }}:{{ horde_stats_exporter_port }}:9150"
+    volumes:
+      - {{ horde_stats_exporter_base_dir }}/exporter_config.yaml:/etc/horde-stats-exporter/exporter_config.yaml:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:9150/metrics')"
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: {{ horde_stats_exporter_log_driver }}
+{% if horde_stats_exporter_log_driver == 'journald' %}
+      options:
+        tag: "{{ horde_stats_exporter_log_tag }}"
+{% endif %}

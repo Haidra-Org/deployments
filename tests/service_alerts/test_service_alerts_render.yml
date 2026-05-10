@@ -1,0 +1,386 @@
+---
+# Test playbook: horde_service_alerts role (config rendering only, no Docker).
+# risk-category: deploy-safety, operational
+#
+# Play 1: Default rendering — verify .env and docker-compose.yml render
+#         every required key, with secure 0600 permissions.
+# Play 2: Off-host upstream — verify basic-auth env vars are emitted only
+#         when both user and password are populated.
+# Play 3: Mismatched basic-auth pair — fail-fast guard.
+# Play 4: HAProxy fragment — verify backend + path-strip rendering.
+
+- name: Test horde_service_alerts render (defaults)
+  hosts: testhost
+  become: true
+  vars:
+    horde_service_alerts_start_services: false
+    horde_service_alerts_base_dir: /opt/horde-service-alerts-default
+    horde_service_alerts_mimir_curated_queries:
+      api_up: 'up{job="ai-horde"}'
+    horde_service_alerts_env_overrides:
+      CUSTOM_VAR: "custom-value"
+  roles:
+    - horde_service_alerts
+
+  post_tasks:
+    - name: Stat docker-compose.yml
+      ansible.builtin.stat:
+        path: /opt/horde-service-alerts-default/docker-compose.yml
+      register: _compose
+
+    - name: Assert docker-compose.yml exists with secure permissions
+      ansible.builtin.assert:
+        that:
+          - _compose.stat.exists
+          - _compose.stat.mode == "0600"
+          - _compose.stat.pw_name == "root"
+        fail_msg: "docker-compose.yml missing or wrong permissions"
+
+    - name: Read docker-compose.yml
+      ansible.builtin.slurp:
+        src: /opt/horde-service-alerts-default/docker-compose.yml
+      register: _compose_content
+
+    - name: Assert compose has expected service shape
+      ansible.builtin.assert:
+        that:
+          - "'service-alerts:' in (_compose_content.content | b64decode)"
+          - "'container_name: horde-service-alerts' in (_compose_content.content | b64decode)"
+          - "'127.0.0.1:19810:19810' in (_compose_content.content | b64decode)"
+          - "'horde.app: \"ai-horde-service-alerts\"' in (_compose_content.content | b64decode)"
+          - "'host.docker.internal:host-gateway' in (_compose_content.content | b64decode)"
+          - "'/healthz' in (_compose_content.content | b64decode)"
+        fail_msg: "Compose missing expected service-alerts shape"
+
+    - name: Stat .env file
+      ansible.builtin.stat:
+        path: /opt/horde-service-alerts-default/.env
+      register: _env
+
+    - name: Assert .env has secure permissions
+      ansible.builtin.assert:
+        that:
+          - _env.stat.exists
+          - _env.stat.mode == "0600"
+          - _env.stat.pw_name == "root"
+        fail_msg: ".env file missing or wrong permissions (must be 0600 root:root)"
+
+    - name: Read .env file
+      ansible.builtin.slurp:
+        src: /opt/horde-service-alerts-default/.env
+      register: _env_content
+
+    - name: Assert .env renders HORDE_ALERTS_PORT
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_PORT=19810' in (_env_content.content | b64decode)"
+
+    - name: Assert .env renders HORDE_ALERTS_ALERTMANAGER_BASE_URL
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_ALERTMANAGER_BASE_URL=http://host.docker.internal:9093' in (_env_content.content | b64decode)"
+
+    - name: Assert .env renders HORDE_ALERTS_MIMIR_BASE_URL
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_MIMIR_BASE_URL=http://host.docker.internal:9009' in (_env_content.content | b64decode)"
+
+    - name: Assert .env renders HORDE_ALERTS_MIMIR_TENANT_DEFAULT
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_MIMIR_TENANT_DEFAULT=infrastructure' in (_env_content.content | b64decode)"
+
+    - name: Assert .env renders HORDE_ALERTS_AIHORDE_BASE_URL
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_AIHORDE_BASE_URL=https://aihorde.net/api/' in (_env_content.content | b64decode)"
+
+    - name: Assert .env renders HORDE_ALERTS_MODERATOR_CACHE_TTL_SECONDS
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_MODERATOR_CACHE_TTL_SECONDS=60' in (_env_content.content | b64decode)"
+
+    - name: Assert .env renders HORDE_ALERTS_PUBLIC_ALERT_LABEL_ALLOWLIST prefix
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_PUBLIC_ALERT_LABEL_ALLOWLIST=' in (_env_content.content | b64decode)"
+
+    - name: Assert .env renders HORDE_ALERTS_ENABLE_INTERNAL_SWAGGER_DOCS
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_ENABLE_INTERNAL_SWAGGER_DOCS=true' in (_env_content.content | b64decode)"
+
+    - name: Assert .env renders the curated query JSON
+      ansible.builtin.assert:
+        that:
+          - "'\"api_up\"' in (_env_content.content | b64decode)"
+          - "'up{job=' in (_env_content.content | b64decode)"
+
+    - name: Assert .env renders env_overrides
+      ansible.builtin.assert:
+        that:
+          - "'CUSTOM_VAR=custom-value' in (_env_content.content | b64decode)"
+
+    - name: Assert .env does NOT include basic-auth keys when unset
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_UPSTREAM_BASIC_AUTH_USER' not in (_env_content.content | b64decode)"
+          - "'HORDE_ALERTS_UPSTREAM_BASIC_AUTH_PASSWORD' not in (_env_content.content | b64decode)"
+        fail_msg: "Basic-auth env keys must not render when user+password are empty"
+
+
+- name: Test horde_service_alerts render (off-host monitoring with basic auth)
+  hosts: testhost
+  become: true
+  vars:
+    horde_service_alerts_start_services: false
+    horde_service_alerts_base_dir: /opt/horde-service-alerts-egress
+    horde_service_alerts_alertmanager_base_url: "http://monitoring.example:9494"
+    horde_service_alerts_mimir_base_url: "http://monitoring.example:9494"
+    horde_service_alerts_upstream_basic_auth_user: "service-alerts"
+    horde_service_alerts_upstream_basic_auth_password: "test-egress-password"
+  roles:
+    - horde_service_alerts
+
+  post_tasks:
+    - name: Read off-host .env file
+      ansible.builtin.slurp:
+        src: /opt/horde-service-alerts-egress/.env
+      register: _egress_env
+
+    - name: Assert .env renders basic-auth credentials
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_UPSTREAM_BASIC_AUTH_USER=service-alerts' in (_egress_env.content | b64decode)"
+          - "'HORDE_ALERTS_UPSTREAM_BASIC_AUTH_PASSWORD=test-egress-password' in (_egress_env.content | b64decode)"
+          - "'HORDE_ALERTS_ALERTMANAGER_BASE_URL=http://monitoring.example:9494' in (_egress_env.content | b64decode)"
+        fail_msg: ".env must render basic-auth credentials when both user and password are set"
+
+    # Regression guard: when the egress-wiring vars ARE set, the role's
+    # default loopback fallback URLs (host.docker.internal:9093/9009) must
+    # NOT leak into the rendered .env. A leak would mean the override path
+    # silently fell back to defaults — the exact failure mode that produced
+    # `503 alertmanager readiness probe failed: All connection attempts
+    # failed` before this guard was added.
+    - name: Assert .env does NOT contain role-default loopback URLs
+      ansible.builtin.assert:
+        that:
+          - "'host.docker.internal:9093' not in (_egress_env.content | b64decode)"
+          - "'host.docker.internal:9009' not in (_egress_env.content | b64decode)"
+        fail_msg: >-
+          .env leaked the role's default host.docker.internal upstream URLs
+          even though horde_service_alerts_{alertmanager,mimir}_base_url
+          were explicitly set. The override path is broken.
+
+
+# Fail-fast on empty / malformed upstream URLs. This guards the failure mode
+# where a Jinja `hostvars[...]` derivation in group_vars resolves to an empty
+# string (e.g. missing `| default(...)`), the role would otherwise render an
+# .env that points at "" — which the running service then interprets as a
+# bad URL and surfaces as a 503 readyz failure with no clear root cause.
+- name: Test horde_service_alerts fail-fast (empty upstream URL)
+  hosts: testhost
+  become: true
+  vars:
+    horde_service_alerts_start_services: false
+    horde_service_alerts_base_dir: /opt/horde-service-alerts-empty-url
+    horde_service_alerts_alertmanager_base_url: ""
+    horde_service_alerts_mimir_base_url: "http://monitoring.example:9494"
+  tasks:
+    - name: Expect role to fail on empty alertmanager URL
+      block:
+        - name: Apply role (should fail)
+          ansible.builtin.include_role:
+            name: horde_service_alerts
+
+        - name: Fail if role did not error
+          ansible.builtin.fail:
+            msg: "Role should have failed: alertmanager_base_url empty"
+      rescue:
+        - name: Assert failure mentions the URL fail-fast
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.msg is defined
+              - >-
+                'alertmanager_base_url' in ansible_failed_result.msg
+                or 'mimir_base_url' in ansible_failed_result.msg
+                or 'http(s)' in ansible_failed_result.msg
+            fail_msg: >-
+              Expected upstream-URL fail-fast, got:
+              {{ ansible_failed_result.msg | default('(no message)') }}
+
+        - name: Confirm fail-fast enforced
+          ansible.builtin.debug:
+            msg: "PASS — correctly rejected empty upstream URL"
+
+
+- name: Test horde_service_alerts fail-fast (mismatched basic-auth pair)
+  hosts: testhost
+  become: true
+  vars:
+    horde_service_alerts_start_services: false
+    horde_service_alerts_base_dir: /opt/horde-service-alerts-mismatch
+    horde_service_alerts_upstream_basic_auth_user: "service-alerts"
+    # password deliberately omitted
+  tasks:
+    - name: Expect role to fail on mismatched basic-auth pair
+      block:
+        - name: Apply role (should fail)
+          ansible.builtin.include_role:
+            name: horde_service_alerts
+
+        - name: Fail if role did not error
+          ansible.builtin.fail:
+            msg: "Role should have failed: basic-auth user set without password"
+      rescue:
+        - name: Assert failure mentions basic auth pairing
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.msg is defined
+              - "'basic_auth' in ansible_failed_result.msg or 'basic-auth' in ansible_failed_result.msg or 'both empty' in ansible_failed_result.msg"
+            fail_msg: >-
+              Expected basic-auth pairing fail-fast, got:
+              {{ ansible_failed_result.msg | default('(no message)') }}
+
+        - name: Confirm fail-fast enforced
+          ansible.builtin.debug:
+            msg: "PASS — correctly rejected mismatched basic-auth pair"
+
+
+- name: Test horde_service_alerts HAProxy conf.d fragment rendering
+  hosts: testhost
+  become: true
+  vars:
+    horde_service_alerts_start_services: false
+    horde_service_alerts_base_dir: /opt/horde-service-alerts-haproxy
+    horde_service_alerts_configure_haproxy_backend: true
+    horde_service_alerts_haproxy_public_path_prefix: "/api/service-alerts/"
+
+  pre_tasks:
+    - name: Prepare HAProxy baseline config for conf.d validation
+      ansible.builtin.include_tasks: ../_shared/haproxy_test_pretasks.yml
+
+  roles:
+    - horde_service_alerts
+
+  post_tasks:
+    - name: Stat HAProxy conf.d fragment
+      ansible.builtin.stat:
+        path: /etc/haproxy/conf.d/horde-service-alerts.cfg
+      register: _haproxy_frag
+
+    - name: Assert HAProxy fragment exists
+      ansible.builtin.assert:
+        that:
+          - _haproxy_frag.stat.exists
+          - _haproxy_frag.stat.mode == "0644"
+        fail_msg: "HAProxy conf.d fragment missing or wrong permissions"
+
+    - name: Read HAProxy fragment
+      ansible.builtin.slurp:
+        src: /etc/haproxy/conf.d/horde-service-alerts.cfg
+      register: _haproxy_content
+
+    - name: Assert HAProxy fragment contains backend + path-strip rule
+      ansible.builtin.assert:
+        that:
+          - "'backend horde_service_alerts_backend' in (_haproxy_content.content | b64decode)"
+          - "'127.0.0.1:19810' in (_haproxy_content.content | b64decode)"
+          - "'http-check send meth GET uri /healthz' in (_haproxy_content.content | b64decode)"
+          - "'replace-path ^/api/service-alerts/' in (_haproxy_content.content | b64decode)"
+        fail_msg: "HAProxy fragment missing backend, healthcheck, or path-strip rule"
+
+    - name: Assert HAProxy fragment ends with LF
+      ansible.builtin.assert:
+        that:
+          - "(_haproxy_content.content | b64decode).endswith('\n')"
+        fail_msg: "HAProxy fragment must end with a terminal LF"
+
+    - name: Validate HAProxy parses with conf.d fragments
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/haproxy
+          - -c
+          - -f
+          - /etc/haproxy/haproxy.cfg
+          - -f
+          - /etc/haproxy/conf.d/
+      changed_when: false
+
+
+# ----------------------------------------------------------------------------
+# Render-time digest pin: image ref must combine tag and @sha256 digest.
+# Behavioral counterpart to the digest-format guard verified in the policy
+# contract test — proves the compose template actually composes them.
+# ----------------------------------------------------------------------------
+- name: Test horde_service_alerts render (image digest pin)
+  hosts: testhost
+  become: true
+  vars:
+    horde_service_alerts_start_services: false
+    horde_service_alerts_base_dir: /opt/horde-service-alerts-pinned
+    horde_service_alerts_image: "ghcr.io/haidra-org/ai-horde-service-alerts:v0.1.0"
+    horde_service_alerts_image_digest: "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+  roles:
+    - horde_service_alerts
+
+  post_tasks:
+    - name: Read pinned compose
+      ansible.builtin.slurp:
+        src: /opt/horde-service-alerts-pinned/docker-compose.yml
+      register: _pinned_compose
+
+    - name: Assert compose ref combines tag and digest
+      ansible.builtin.assert:
+        that:
+          - "'image: ghcr.io/haidra-org/ai-horde-service-alerts:v0.1.0@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789' in (_pinned_compose.content | b64decode)"
+        fail_msg: >-
+          Compose image must be rendered as <tag>@<digest> when both
+          horde_service_alerts_image and horde_service_alerts_image_digest
+          are set.
+
+
+# ----------------------------------------------------------------------------
+# Fail-fast: an invalid digest must be rejected before any rendering.
+# ----------------------------------------------------------------------------
+- name: Test horde_service_alerts fail-fast (invalid image digest)
+  hosts: testhost
+  become: true
+  vars:
+    horde_service_alerts_start_services: false
+    horde_service_alerts_base_dir: /opt/horde-service-alerts-baddigest
+    horde_service_alerts_image_digest: "sha256:not-a-real-digest"
+  tasks:
+    - name: Expect role to fail on invalid digest
+      block:
+        - name: Apply role (should fail at the digest guard)
+          ansible.builtin.include_role:
+            name: horde_service_alerts
+
+        - name: Force test failure if role accepted invalid digest
+          ansible.builtin.fail:
+            msg: "Role accepted an invalid image digest format"
+      rescue:
+        - name: Assert failure came from the digest guard
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.msg is defined
+              - ansible_failed_result.msg is search('digest')
+                or ansible_failed_result.msg is search('sha256')
+            fail_msg: >-
+              Role failed for the wrong reason — expected the
+              horde_service_alerts_image_digest format guard to trigger.
+              Got: {{ ansible_failed_result }}
+
+        - name: Confirm no compose was rendered before fail-fast
+          ansible.builtin.stat:
+            path: /opt/horde-service-alerts-baddigest/docker-compose.yml
+          register: _baddigest_compose
+
+        - name: Assert digest guard runs before any template task
+          ansible.builtin.assert:
+            that:
+              - not _baddigest_compose.stat.exists
+            fail_msg: >-
+              Role rendered docker-compose.yml before failing on the
+              digest guard — guard must run before template tasks.

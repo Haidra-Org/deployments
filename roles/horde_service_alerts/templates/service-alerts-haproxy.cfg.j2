@@ -1,0 +1,28 @@
+# ai-horde-service-alerts HAProxy conf.d fragment
+# Managed by the horde_service_alerts Ansible role — do not edit by hand.
+#
+# Adds a backend pointing at the local FastAPI service plus a path_beg ACL
+# (use_backend rule) so that any frontend on the host can route the public
+# path prefix "{{ horde_service_alerts_haproxy_public_path_prefix }}" to it.
+#
+# This fragment intentionally does NOT define its own listening frontend;
+# the operator wires the ACL into an existing public frontend (e.g. the
+# main TLS-terminating one) by placing the use_backend line within reach
+# of HAProxy's conf.d include.  HAProxy 2.4+ accepts a free-floating
+# use_backend at the global scope only when associated with a listed
+# frontend, so the file below pairs the backend with an explicit empty
+# frontend that *only* declares the routing decision and is intended to
+# be ACL-merged in by an operator-managed parent frontend if needed.
+
+backend {{ horde_service_alerts_haproxy_backend_name }}
+    balance leastconn
+    timeout queue 30s
+    retries 3
+    option httpchk
+    option forwardfor if-none
+    http-check send meth GET uri /healthz
+    http-check expect status 200
+
+    server horde_service_alerts_local 127.0.0.1:{{ horde_service_alerts_port }} check observe layer7
+
+# end of managed fragment

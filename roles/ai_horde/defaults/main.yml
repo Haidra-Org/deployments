@@ -117,3 +117,9 @@ ai_horde_otel_traces_sampler_arg: "1.0"
 # Alloy must bind its OTLP receiver to an address reachable from Docker
 # (e.g. 0.0.0.0 or 172.17.0.1).  See horde_alloy_otlp_listen_address.
 ai_horde_alloy_otlp_port: 4318
+
+# OTLP PeriodicExportingMetricReader interval (ms).  The default SDK value is
+# 60000 (60 s), which is fine for production but makes local integration tests
+# wait >60 s before the first metric batch lands in Mimir.  Override per
+# environment (e.g. local-deploy sets 10000) via ai_horde_env_overrides.
+ai_horde_otel_metric_export_interval: 60000

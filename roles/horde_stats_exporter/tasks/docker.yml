@@ -1,0 +1,77 @@
+---
+# Core tasks to deploy ai-horde-stats-exporter via Docker Compose.
+
+- name: Verify Docker is available
+  ansible.builtin.command: docker --version
+  register: horde_stats_exporter__docker_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Fail if Docker is not installed
+  ansible.builtin.fail:
+    msg: "Docker is required but not installed. Please install Docker."
+  when: horde_stats_exporter__docker_check.rc != 0
+
+- name: Verify Docker Compose V2 is available
+  ansible.builtin.command: docker compose version
+  register: horde_stats_exporter__compose_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Fail if Docker Compose V2 is not available
+  ansible.builtin.fail:
+    msg: >-
+      Docker Compose V2 is required but not available. Please install
+      docker-compose-plugin.
+  when: horde_stats_exporter__compose_check.rc != 0
+
+- name: Ensure base directory exists
+  ansible.builtin.file:
+    path: "{{ horde_stats_exporter_base_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  become: true
+
+- name: Template exporter configuration
+  ansible.builtin.template:
+    src: exporter_config.yaml.j2
+    dest: "{{ horde_stats_exporter_base_dir }}/exporter_config.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Restart ai-horde-stats-exporter Docker stack
+
+- name: Template Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.exporter.yml.j2
+    dest: "{{ horde_stats_exporter_base_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Restart ai-horde-stats-exporter Docker stack
+
+- name: Manage ai-horde-stats-exporter Docker Compose stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ horde_stats_exporter_base_dir }}"
+    state: present
+    pull: always
+    build: never
+  become: true
+  when: horde_stats_exporter_start_services | bool
+
+- name: Wait for stats-exporter /metrics
+  ansible.builtin.uri:
+    url: "http://{{ horde_stats_exporter_listen }}:{{ horde_stats_exporter_port }}/metrics"
+    method: GET
+    status_code: 200
+  register: horde_stats_exporter__metrics
+  until: horde_stats_exporter__metrics.status == 200
+  retries: 30
+  delay: 2
+  when: horde_stats_exporter_start_services | bool

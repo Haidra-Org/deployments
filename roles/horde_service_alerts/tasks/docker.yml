@@ -1,0 +1,82 @@
+---
+# Core tasks to deploy ai-horde-service-alerts via Docker Compose.
+
+- name: Verify Docker is available
+  ansible.builtin.command: docker --version
+  register: horde_service_alerts__docker_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Fail if Docker is not installed
+  ansible.builtin.fail:
+    msg: "Docker is required but not installed. Please install Docker."
+  when: horde_service_alerts__docker_check.rc != 0
+
+- name: Verify Docker Compose V2 is available
+  ansible.builtin.command: docker compose version
+  register: horde_service_alerts__compose_check
+  changed_when: false
+  ignore_errors: true
+
+- name: Fail if Docker Compose V2 is not available
+  ansible.builtin.fail:
+    msg: >-
+      Docker Compose V2 is required but not available. Please install
+      docker-compose-plugin.
+  when: horde_service_alerts__compose_check.rc != 0
+
+- name: Ensure base directory exists
+  ansible.builtin.file:
+    path: "{{ horde_service_alerts_base_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  become: true
+
+- name: Template service-alerts environment file
+  ansible.builtin.template:
+    src: service-alerts.env.j2
+    dest: "{{ horde_service_alerts_base_dir }}/.env"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  # NOTE: no `no_log: true` here. The rendered .env is written 0600 root:root
+  # and secrets originate from ansible-vault. Without --diff, Ansible does not
+  # print template content. The previous `no_log: true` swallowed Jinja
+  # render-time errors as `"censored"`, masking real configuration bugs.
+  # Operators who pass --diff with sensitive values are expected to know it.
+  notify:
+    - Restart ai-horde-service-alerts Docker stack
+
+- name: Template Docker Compose file
+  ansible.builtin.template:
+    src: docker-compose.service-alerts.yml.j2
+    dest: "{{ horde_service_alerts_base_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  notify:
+    - Restart ai-horde-service-alerts Docker stack
+
+- name: Manage ai-horde-service-alerts Docker Compose stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ horde_service_alerts_base_dir }}"
+    state: present
+    pull: always
+    build: never
+  become: true
+  when: horde_service_alerts_start_services | bool
+
+- name: Wait for service-alerts /healthz
+  ansible.builtin.uri:
+    url: "http://{{ horde_service_alerts_listen }}:{{ horde_service_alerts_port }}/healthz"
+    method: GET
+    status_code: 200
+  register: horde_service_alerts__healthz
+  until: horde_service_alerts__healthz.status == 200
+  retries: 30
+  delay: 2
+  when: horde_service_alerts_start_services | bool

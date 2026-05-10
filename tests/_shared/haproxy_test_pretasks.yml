@@ -1,0 +1,34 @@
+---
+- name: Install HAProxy for config validation
+  ansible.builtin.apt:
+    name: haproxy
+    state: present
+    update_cache: true
+  register: _haproxy_test_install_result
+  retries: 3
+  delay: 5
+  until: _haproxy_test_install_result is succeeded
+
+- name: Create HAProxy config directory for test
+  ansible.builtin.file:
+    path: /etc/haproxy
+    state: directory
+    mode: "0755"
+
+- name: Create stub HAProxy config with listener for test validation
+  ansible.builtin.copy:
+    dest: /etc/haproxy/haproxy.cfg
+    content: |
+      global
+          log /dev/log local0
+      defaults
+          mode http
+          timeout connect 5s
+          timeout client 50s
+          timeout server 50s
+      frontend ci_stub_front
+          bind {{ haproxy_test_stub_bind | default('127.0.0.1:18081') }}
+          default_backend ci_stub_backend
+      backend ci_stub_backend
+          server ci_stub_server {{ haproxy_test_stub_server | default('127.0.0.1:18082') }}
+    mode: "0644"

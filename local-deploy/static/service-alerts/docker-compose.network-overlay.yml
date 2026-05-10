@@ -1,0 +1,20 @@
+# Overlay: connects the ai-horde-service-alerts container to the shared
+# horde-stack network.  Used with:
+#   docker compose -f docker-compose.yml -f docker-compose.network-overlay.yml
+#
+# The alias `service-alerts` on horde-stack lets HAProxy resolve the
+# service by name (server service-alerts service-alerts:19810) via Docker's
+# embedded DNS without any external DNS dependency.
+services:
+  service-alerts:
+    networks:
+      service_alerts_network: {}
+      horde-stack:
+        aliases:
+          - service-alerts
+
+networks:
+  service_alerts_network:
+    driver: bridge
+  horde-stack:
+    external: true

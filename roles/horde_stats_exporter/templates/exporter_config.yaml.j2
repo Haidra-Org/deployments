@@ -1,5 +1,9 @@
 # AI Horde Prometheus Exporter Configuration
 # Managed by Ansible - do not edit manually
+#
+# Note: the in-container listener is fixed at 9150 (matches the image's
+# EXPOSE). The host-side bind/port is controlled by the Compose port mapping
+# (horde_stats_exporter_listen / horde_stats_exporter_port).
 
 scrape_intervals:
   models: {{ horde_stats_exporter_scrape_models }}
@@ -15,5 +19,5 @@ api:
   timeout: {{ horde_stats_exporter_api_timeout }}
 
 exporter:
-  port: {{ horde_stats_exporter_port }}
+  port: 9150
   log_level: {{ horde_stats_exporter_log_level }}

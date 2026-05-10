@@ -52,6 +52,13 @@
         owner: root
         group: root
         mode: "0644"
-        validate: "/usr/sbin/haproxy -c -f /etc/haproxy/haproxy.cfg -f %s"
       notify:
         - Restart HAProxy
+
+    - name: Validate full HAProxy configuration (haproxy.cfg + all conf.d fragments)
+      ansible.builtin.command: >-
+        /usr/sbin/haproxy -c
+        -f /etc/haproxy/haproxy.cfg
+        -f /etc/haproxy/conf.d/
+      changed_when: false
+      become: true

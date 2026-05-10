@@ -1,0 +1,126 @@
+---
+# Policy contract test for horde_stats_exporter.
+# risk-category: security, reproducibility, fail-fast
+#
+# Asserts invariants on the role's defaults + templates without rendering or
+# starting the container. Runs without docker-daemon.
+#
+# These checks are intentionally complementary to
+# test_stats_exporter_render.yml: render proves the templating is correct;
+# policy proves the defaults remain safe regardless of how a downstream
+# operator overrides surface vars.
+
+- name: Validate horde_stats_exporter policy contracts
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Load role defaults as YAML
+      ansible.builtin.set_fact:
+        _defaults: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../roles/horde_stats_exporter/defaults/main.yml') | from_yaml }}"
+
+    - name: Assert default image points at the GHCR Haidra-Org namespace
+      ansible.builtin.assert:
+        that:
+          - _defaults.horde_stats_exporter_image is string
+          - _defaults.horde_stats_exporter_image is match('^ghcr\\.io/haidra-org/ai-horde-stats-exporter:.+$')
+        fail_msg: >-
+          horde_stats_exporter_image must default to a tag under
+          ghcr.io/haidra-org/ai-horde-stats-exporter so the role tracks
+          the published image stream.
+
+    - name: Assert default image is not :latest
+      ansible.builtin.assert:
+        that:
+          - not (_defaults.horde_stats_exporter_image is search(':latest$'))
+        fail_msg: >-
+          horde_stats_exporter_image must not default to :latest. Use a
+          rolling branch tag (e.g. :main) or an immutable release tag.
+
+    - name: Assert default bind is loopback
+      ansible.builtin.assert:
+        that:
+          - _defaults.horde_stats_exporter_listen == "127.0.0.1"
+        fail_msg: >-
+          horde_stats_exporter_listen must default to 127.0.0.1 so the
+          /metrics endpoint is not unintentionally world-reachable.
+
+    - name: Assert default port is 9150
+      ansible.builtin.assert:
+        that:
+          - _defaults.horde_stats_exporter_port | int == 9150
+        fail_msg: >-
+          horde_stats_exporter_port must default to 9150 to match the
+          long-standing Prometheus scrape configuration.
+
+    - name: Assert image_digest var exists with empty default
+      ansible.builtin.assert:
+        that:
+          - "'horde_stats_exporter_image_digest' in _defaults"
+          - _defaults.horde_stats_exporter_image_digest == ""
+        fail_msg: >-
+          horde_stats_exporter_image_digest must exist with an empty
+          default so consumers can opt into immutable digest pinning
+          without breaking the floating-tag default.
+
+    - name: Read compose template
+      ansible.builtin.slurp:
+        path: "{{ playbook_dir }}/../../roles/horde_stats_exporter/templates/docker-compose.exporter.yml.j2"
+      register: _compose_tpl_raw
+
+    - name: Decode compose template
+      ansible.builtin.set_fact:
+        _compose_tpl: "{{ _compose_tpl_raw.content | b64decode }}"
+
+    - name: Assert compose template carries the standard horde labels
+      ansible.builtin.assert:
+        that:
+          - "'horde.logs: \"true\"' in _compose_tpl"
+          - "'horde.app: \"ai-horde-stats-exporter\"' in _compose_tpl"
+          - "'horde.component:' in _compose_tpl"
+        fail_msg: >-
+          docker-compose.exporter.yml.j2 must include the standard
+          horde.logs / horde.app / horde.component labels so Alloy log
+          discovery and dashboard filters keep working.
+
+    - name: Assert compose template binds to the listen var (not 0.0.0.0)
+      ansible.builtin.assert:
+        that:
+          - "'{{ \"{{\" }} horde_stats_exporter_listen {{ \"}}\" }}:' in _compose_tpl"
+          - "'0.0.0.0:' not in _compose_tpl"
+        fail_msg: >-
+          docker-compose.exporter.yml.j2 must map the host port via the
+          horde_stats_exporter_listen var; never hardcode 0.0.0.0.
+
+    - name: Assert compose template builds image ref via the digest helper
+      ansible.builtin.assert:
+        that:
+          # The Jinja set-block uses both the image var and the digest var
+          # so an operator can pin without re-defining the bare image ref.
+          - "'horde_stats_exporter_image' in _compose_tpl"
+          - "'horde_stats_exporter_image_digest' in _compose_tpl"
+          - "'_image_ref' in _compose_tpl"
+        fail_msg: >-
+          docker-compose.exporter.yml.j2 must compute the image ref from
+          horde_stats_exporter_image plus an optional @digest suffix.
+
+    - name: Assert role has no leftover legacy systemd templates
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../roles/horde_stats_exporter/templates/{{ item }}"
+      register: _legacy_template_stat
+      loop:
+        - horde-exporter.service.j2
+        - horde-downsample.service.j2
+        - horde-downsample.timer.j2
+        - logrotate-horde-stats.j2
+
+    - name: Confirm no legacy systemd template survives the Docker rewrite
+      ansible.builtin.assert:
+        that:
+          - not item.stat.exists
+        fail_msg: >-
+          Legacy template {{ item.item }} must be removed; the role no
+          longer manages a systemd service for the exporter.
+      loop: "{{ _legacy_template_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"

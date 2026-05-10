@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: horde_service_alerts
+  author: Haidra-Org
+  description: |
+    Deploy the AI Horde service-alerts FastAPI middleman, a thin proxy that
+    fronts Alertmanager + Mimir for unauthenticated public consumers and
+    moderator-only internal callers.
+  license: AGPL-3.0-or-later
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+    - name: Debian
+      versions:
+        - bookworm
+
+dependencies: []

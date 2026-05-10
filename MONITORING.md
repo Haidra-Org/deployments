@@ -10,7 +10,7 @@ fit together.
 | Role                                                | Purpose                                                                         | README                                         |
 | --------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------- |
 | [horde_monitoring](roles/horde_monitoring/)         | Mimir + Grafana + S3 storage + optional Loki/Tempo/Pyroscope via Docker Compose | [README](roles/horde_monitoring/README.md)     |
-| [horde_stats_exporter](roles/horde_stats_exporter/) | AI Horde API → Prometheus metrics exporter (systemd)                            | [README](roles/horde_stats_exporter/README.md) |
+| [horde_stats_exporter](roles/horde_stats_exporter/) | AI Horde API → Prometheus metrics exporter (Docker Compose)                     | [README](roles/horde_stats_exporter/README.md) |
 | [horde_alloy](roles/horde_alloy/)                   | Grafana Alloy telemetry collector on application hosts                          | [README](roles/horde_alloy/README.md)          |
 
 Prometheus and Alertmanager are deployed directly using the
@@ -25,7 +25,7 @@ and `remote_write` configuration.
 AI Horde APIs                       │                                               │
      │                              │  Prometheus (native)                          │
      ▼                              │    ├─ scrapes horde-exporter, node, mimir …   │
-  horde-exporter (systemd)          │    └─ remote_write ──► Mimir (Docker)         │
+  horde-exporter (Docker)           │    └─ remote_write ──► Mimir (Docker)         │
      │ /metrics                     │                           │                   │
      └────── scraped by ───────────>|              S3 backend (embedded/external)   │
                                     │                            │                  │

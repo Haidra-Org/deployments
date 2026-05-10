@@ -1,0 +1,108 @@
+---
+# Policy contract test for horde_service_alerts.
+# risk-category: security, reproducibility, fail-fast
+#
+# Asserts invariants on the role's defaults + templates without rendering or
+# starting the container. Runs without docker-daemon. Render-time behavior
+# (digest-pin compose ref, basic-auth env wiring) is validated by
+# test_service_alerts_render.yml.
+
+- name: Validate horde_service_alerts policy contracts
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Load role defaults as YAML
+      ansible.builtin.set_fact:
+        _defaults: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../roles/horde_service_alerts/defaults/main.yml') | from_yaml }}"
+
+    - name: Assert default image points at the GHCR Haidra-Org namespace
+      ansible.builtin.assert:
+        that:
+          - _defaults.horde_service_alerts_image is string
+          - _defaults.horde_service_alerts_image is match('^ghcr\\.io/haidra-org/ai-horde-service-alerts:.+$')
+        fail_msg: >-
+          horde_service_alerts_image must default to a tag under
+          ghcr.io/haidra-org/ai-horde-service-alerts.
+
+    - name: Assert default image is not :latest
+      ansible.builtin.assert:
+        that:
+          - not (_defaults.horde_service_alerts_image is search(':latest$'))
+        fail_msg: >-
+          horde_service_alerts_image must not default to :latest.
+
+    - name: Assert default bind is loopback
+      ansible.builtin.assert:
+        that:
+          - _defaults.horde_service_alerts_listen == "127.0.0.1"
+        fail_msg: >-
+          horde_service_alerts_listen must default to 127.0.0.1 to keep
+          the FastAPI service off the public internet by default.
+
+    - name: Assert image_digest var exists with empty default
+      ansible.builtin.assert:
+        that:
+          - "'horde_service_alerts_image_digest' in _defaults"
+          - _defaults.horde_service_alerts_image_digest == ""
+        fail_msg: >-
+          horde_service_alerts_image_digest must exist with an empty
+          default so consumers can opt into immutable digest pinning.
+
+    - name: Assert basic-auth credentials default to empty (opt-in)
+      ansible.builtin.assert:
+        that:
+          - _defaults.horde_service_alerts_upstream_basic_auth_user == ""
+          - _defaults.horde_service_alerts_upstream_basic_auth_password == ""
+        fail_msg: >-
+          Upstream basic-auth credentials must default to empty so the
+          role does not silently ship a placeholder credential pair.
+
+    - name: Read compose template
+      ansible.builtin.slurp:
+        path: "{{ playbook_dir }}/../../roles/horde_service_alerts/templates/docker-compose.service-alerts.yml.j2"
+      register: _compose_tpl_raw
+
+    - name: Decode compose template
+      ansible.builtin.set_fact:
+        _compose_tpl: "{{ _compose_tpl_raw.content | b64decode }}"
+
+    - name: Assert compose template binds to the listen var (not 0.0.0.0)
+      ansible.builtin.assert:
+        that:
+          - "'{{ \"{{\" }} horde_service_alerts_listen {{ \"}}\" }}:' in _compose_tpl"
+          - "'0.0.0.0:' not in _compose_tpl"
+        fail_msg: >-
+          docker-compose.service-alerts.yml.j2 must map the host port via
+          the horde_service_alerts_listen var; never hardcode 0.0.0.0.
+
+    - name: Assert compose template builds image ref via the digest helper
+      ansible.builtin.assert:
+        that:
+          - "'horde_service_alerts_image' in _compose_tpl"
+          - "'horde_service_alerts_image_digest' in _compose_tpl"
+          - "'_image_ref' in _compose_tpl"
+        fail_msg: >-
+          docker-compose.service-alerts.yml.j2 must compute the image ref
+          from horde_service_alerts_image plus an optional @digest suffix.
+
+    - name: Read role main task file
+      ansible.builtin.slurp:
+        path: "{{ playbook_dir }}/../../roles/horde_service_alerts/tasks/main.yml"
+      register: _tasks_raw
+
+    - name: Decode tasks/main.yml
+      ansible.builtin.set_fact:
+        _tasks: "{{ _tasks_raw.content | b64decode }}"
+
+    - name: Assert digest format guard exists
+      ansible.builtin.assert:
+        that:
+          - "'horde_service_alerts_image_digest' in _tasks"
+          # The guard regex must be exactly the canonical sha256 form,
+          # not just a substring containing 'sha256'.
+          - _tasks is search('\\^sha256:\\[0-9a-f\\]\\{64\\}\\$')
+        fail_msg: >-
+          tasks/main.yml must fail-fast on malformed
+          horde_service_alerts_image_digest values via the canonical
+          ^sha256:[0-9a-f]{64}$ regex.

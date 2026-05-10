@@ -49,7 +49,11 @@
     state: directory
     owner: root
     group: root
-    mode: "0750"
+    # World-traversable so the postgres container user (UID 999) can enter
+    # the bind-mount directory.  The files inside are owned by UID 999 with
+    # mode 0700/0600, so host-side security is preserved at file level.
+    # 0750 would block UID 999 on re-runs and cause FATAL permission errors.
+    mode: "0755"
   become: true
   when: ai_horde_embedded_postgres_enabled | bool
 
