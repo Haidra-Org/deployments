@@ -8,6 +8,7 @@
 #
 # The HAProxy config is a static file (local-deploy/static/haproxy/haproxy.cfg)
 # and does not need to be rendered here.
+# Risk category: deploy-safety, operational
 
 - name: Render complete Horde stack configs (local deploy)
   hosts: localhost
@@ -26,6 +27,8 @@
     # `dc_backend build`. Without this, the compose only references
     # `image:` and the build step is a no-op.
     ai_horde_build_context: "./src"
+    ai_horde_build_dependency_groups:
+      - telemetry-profiling
     # Tag the locally-built image with a -local suffix so it can never be
     # overwritten by a `docker pull` from the registry.
     ai_horde_image: "ai-horde:local"

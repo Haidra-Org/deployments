@@ -1,4 +1,13 @@
 # {{ ansible_managed }}
+{% set _configured_dependency_groups = ai_horde_build_dependency_groups | default([]) %}
+{% if _configured_dependency_groups is string %}
+{% set _build_dependency_groups = _configured_dependency_groups.split() %}
+{% else %}
+{% set _build_dependency_groups = _configured_dependency_groups %}
+{% endif %}
+{% if ai_horde_pyroscope_enabled | bool and ai_horde_pyroscope_dependency_group not in _build_dependency_groups %}
+{% set _build_dependency_groups = _build_dependency_groups + [ai_horde_pyroscope_dependency_group] %}
+{% endif %}
 services:
   aihorde:
 {% if ai_horde_build_context | default('') | length > 0 %}
@@ -7,6 +16,10 @@ services:
       context: {{ ai_horde_build_context }}
 {% if ai_horde_build_dockerfile | default('') | length > 0 %}
       dockerfile: {{ ai_horde_build_dockerfile }}
+{% endif %}
+{% if _build_dependency_groups | length > 0 %}
+      args:
+        AI_HORDE_DEPENDENCY_GROUPS: "{{ _build_dependency_groups | join(' ') }}"
 {% endif %}
 {% else %}
     image: {{ ai_horde_image }}

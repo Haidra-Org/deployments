@@ -79,8 +79,11 @@ cd deployments
 ./tests/ai_horde/local_deploy.sh up --latest
 ```
 
-This clones the latest AI-Horde source, builds the Docker image, and starts
-the three-container stack. When you see the banner, it's ready:
+This clones the latest AI-Horde source, builds `ai-horde:local`, and starts
+the three-container stack. Local deploy enables Pyroscope profiling, so the
+rendered Compose file builds with the AI-Horde `telemetry-profiling`
+dependency group instead of pulling the default runtime image. When you see
+the banner, it's ready:
 
 ```
 AI-Horde API    →  http://localhost:7001/api/
@@ -217,6 +220,15 @@ Monitoring is optional and can be enabled as an extra tier.
 
 ```bash
 ./tests/full_stack/local_deploy.sh up --latest
+```
+
+To test uncommitted AI-Horde changes in the full stack, point the script at
+your checkout. Because local full-stack deploy enables Pyroscope, that checkout
+must include the Dockerfile `AI_HORDE_DEPENDENCY_GROUPS` build arg and the
+`telemetry-profiling` dependency group in `pyproject.toml`.
+
+```bash
+./tests/full_stack/local_deploy.sh up --with-monitoring --local-ai-horde ../AI-Horde
 ```
 
 ### Port assignments

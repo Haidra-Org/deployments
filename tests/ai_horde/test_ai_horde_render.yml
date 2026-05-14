@@ -1,9 +1,12 @@
 ---
 # Test playbook: AI-Horde role (config rendering only, no service start)
+# Risk category: deploy-safety, security, fail-fast, operational
 #
 # Play 1: Positive test — render with valid inputs, assert on output files
-# Play 2: Negative test — missing postgres password triggers fail-fast
-# Play 3: Negative test — missing secret key triggers fail-fast
+# Play 2: Profiling build render — Pyroscope uses telemetry image/build deps
+# Play 3: Guard — PYROSCOPE_ENABLED must use ai_horde_pyroscope_enabled
+# Play 4: Negative test — missing postgres password triggers fail-fast
+# Play 5: Negative test — missing secret key triggers fail-fast
 
 - name: Test AI-Horde role render (positive)
   hosts: testhost
@@ -196,6 +199,81 @@
           - not _otlp_bridge.stat.exists
         fail_msg: "OTLP bridge HAProxy snippet should not exist — containers reach Alloy directly"
 
+- name: Test AI-Horde role render (profiling build)
+  hosts: testhost
+  become: true
+  vars:
+    ai_horde_start_services: false
+    ai_horde_base_dir: /opt/ai-horde-profiling-test
+    ai_horde_data_dir: /var/lib/ai-horde-profiling-test
+    ai_horde_postgres_password: "test-pg-password"
+    ai_horde_secret_key: "test-secret-key-12345"
+    ai_horde_env_overrides:
+      KUDOS_TRUST_THRESHOLD: "100"
+    ai_horde_build_context: "./src"
+    ai_horde_pyroscope_enabled: "true"
+    ai_horde_embedded_postgres_enabled: true
+    ai_horde_embedded_redis_enabled: true
+    ai_horde_deployment_environment: "local-deploy"
+  roles:
+    - ai_horde
+  post_tasks:
+    - name: Read profiling docker-compose.yml
+      ansible.builtin.slurp:
+        src: /opt/ai-horde-profiling-test/docker-compose.yml
+      register: _profiling_compose_content
+
+    - name: Assert profiling compose selects telemetry image and build arg
+      ansible.builtin.assert:
+        that:
+          - "'image: ghcr.io/haidra-org/ai-horde:main-telemetry' in _profiling_compose_content.content | b64decode"
+          - "'build:' in _profiling_compose_content.content | b64decode"
+          - "'context: ./src' in _profiling_compose_content.content | b64decode"
+          - "'AI_HORDE_DEPENDENCY_GROUPS: \"telemetry-profiling\"' in _profiling_compose_content.content | b64decode"
+        fail_msg: "Pyroscope-enabled local builds must include the telemetry-profiling dependency group"
+
+    - name: Read profiling .env file
+      ansible.builtin.slurp:
+        src: /opt/ai-horde-profiling-test/.env
+      register: _profiling_env_content
+
+    - name: Assert profiling env enables Pyroscope
+      ansible.builtin.assert:
+        that:
+          - "'PYROSCOPE_ENABLED=\"true\"' in _profiling_env_content.content | b64decode"
+
+- name: Test AI-Horde guard (Pyroscope env override)
+  hosts: testhost
+  become: true
+  vars:
+    ai_horde_start_services: false
+    ai_horde_postgres_password: "test-pg-password"
+    ai_horde_secret_key: "test-secret-key-12345"
+    ai_horde_env_overrides:
+      KUDOS_TRUST_THRESHOLD: "100"
+      PYROSCOPE_ENABLED: "true"
+    ai_horde_embedded_postgres_enabled: true
+    ai_horde_embedded_redis_enabled: true
+    ai_horde_deployment_environment: "local-deploy"
+  tasks:
+    - name: Expect role to fail on raw Pyroscope env override
+      block:
+        - name: Include ai_horde role with forbidden Pyroscope env override
+          ansible.builtin.include_role:
+            name: ai_horde
+        - name: Fail if role did not reject raw Pyroscope env override
+          ansible.builtin.fail:
+            msg: "Role should have failed due to PYROSCOPE_ENABLED in ai_horde_env_overrides"
+      rescue:
+        - name: Assert failure was specifically about Pyroscope env override
+          ansible.builtin.assert:
+            that:
+              - "'PYROSCOPE_ENABLED' in ansible_failed_result.msg"
+              - "'ai_horde_pyroscope_enabled' in ansible_failed_result.msg"
+            fail_msg: >-
+              Expected PYROSCOPE_ENABLED env override guard failure, got:
+              {{ ansible_failed_result.msg | default(ansible_failed_result) }}
+
 - name: Test AI-Horde role fail-fast (missing postgres password)
   hosts: testhost
   become: true
@@ -259,7 +337,7 @@
             msg: "PASS - correctly rejected missing ai_horde_secret_key"
 
 # ---------------------------------------------------------------------------
-# Play 4: Guard — production environment + embedded datastores = fail
+# Play 6: Guard — production environment + embedded datastores = fail
 # ---------------------------------------------------------------------------
 - name: Test AI-Horde guard (production + embedded datastores)
   hosts: testhost
@@ -300,7 +378,7 @@
             msg: "PASS - correctly rejected embedded datastores in production"
 
 # ---------------------------------------------------------------------------
-# Play 5: Guard — ai_horde_data_dir set to a well-known PostgreSQL path
+# Play 7: Guard — ai_horde_data_dir set to a well-known PostgreSQL path
 # ---------------------------------------------------------------------------
 - name: Test AI-Horde guard (data_dir is a PostgreSQL system path)
   hosts: testhost
@@ -339,7 +417,7 @@
             msg: "PASS - correctly rejected PostgreSQL system path as ai_horde_data_dir"
 
 # ---------------------------------------------------------------------------
-# Play 6: External mode render — embedded=false, external hosts configured
+# Play 8: External mode render — embedded=false, external hosts configured
 # ---------------------------------------------------------------------------
 - name: Test AI-Horde role render (external datastores)
   hosts: testhost
