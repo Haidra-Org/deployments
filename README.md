@@ -258,6 +258,9 @@ the unified edge router. Monitoring and the GPU worker are optional tiers.
 # Everything:
 ./tests/full_stack/local_deploy.sh up --all
 
+# Use an uncommitted local AI-Horde checkout:
+./tests/full_stack/local_deploy.sh up --with-monitoring --local-ai-horde ../AI-Horde
+
 # Tear down (unconditional — stops all tiers):
 ./tests/full_stack/local_deploy.sh down
 

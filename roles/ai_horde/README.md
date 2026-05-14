@@ -161,7 +161,11 @@ server {
 
 | Variable                             | Default                            | Description                                                                          |
 | ------------------------------------ | ---------------------------------- | ------------------------------------------------------------------------------------ |
-| `ai_horde_image`                     | `ghcr.io/haidra-org/ai-horde:main` | Docker image to deploy                                                               |
+| `ai_horde_default_image`             | `ghcr.io/haidra-org/ai-horde:main` | Default Docker image, without Pyroscope profiling wheels                             |
+| `ai_horde_telemetry_image`           | `ghcr.io/haidra-org/ai-horde:main-telemetry` | Docker image with the `telemetry-profiling` dependency group installed     |
+| `ai_horde_image`                     | dynamic                            | Image to deploy; defaults to `ai_horde_telemetry_image` when Pyroscope is enabled    |
+| `ai_horde_build_context`             | `""`                              | Optional local Docker build context; empty means pull `ai_horde_image`               |
+| `ai_horde_build_dependency_groups`   | `[]`                               | Optional pyproject dependency groups passed to Docker as `AI_HORDE_DEPENDENCY_GROUPS` |
 | `ai_horde_port`                      | `7001`                             | Base HTTP port (range start when replicas > 1)                                       |
 | `ai_horde_listen`                    | `127.0.0.1`                        | Bind address for host port mapping                                                   |
 | `ai_horde_replicas`                  | `1`                                | Number of backend container replicas                                                 |
@@ -190,6 +194,12 @@ server {
 ## Observability / Telemetry
 
 Variables governing OpenTelemetry (traces/metrics) and Pyroscope (continuous profiling).
+OpenTelemetry is installed in the default image. Pyroscope profiling is optional
+because it pulls native profiler wheels; use `ai_horde_pyroscope_enabled: "true"`
+to select the published `main-telemetry` image, or use `ai_horde_build_context`
+with the `telemetry-profiling` dependency group for local builds.
+Do not set `PYROSCOPE_ENABLED` through `ai_horde_env_overrides`; the role rejects
+that so image selection and build args cannot drift from the runtime switch.
 
 | Variable                           | Default      | Description                                                                    |
 | ---------------------------------- | ------------ | ------------------------------------------------------------------------------ |
@@ -197,5 +207,6 @@ Variables governing OpenTelemetry (traces/metrics) and Pyroscope (continuous pro
 | `ai_horde_otel_sdk_disabled`       | `"false"`    | Set to `"true"` to disable OpenTelemetry entirely                              |
 | `ai_horde_otel_instrument_redis`   | `"false"`    | Enable OTel Redis instrumentation (noisy; pair with Alloy-side span filtering) |
 | `ai_horde_otel_traces_sampler_arg` | `"1.0"`      | Head sampler ratio (0.0–1.0); lower only under sustained high RPS              |
-| `ai_horde_pyroscope_enabled`       | `"false"`    | Enable continuous profiling (requires `pyroscope-io` in the image)             |
+| `ai_horde_pyroscope_enabled`       | `"false"`    | Enable continuous profiling and select/add the profiling dependency group       |
+| `ai_horde_pyroscope_dependency_group` | `telemetry-profiling` | pyproject dependency group used when building a profiling-capable image |
 | `ai_horde_deployment_environment`  | `production` | Environment tag for separating dev/staging clusters in dashboards              |

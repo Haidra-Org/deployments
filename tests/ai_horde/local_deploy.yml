@@ -5,6 +5,7 @@
 # Driven by tests/ai_horde/local_deploy.sh — do not run directly.
 # Applies the ai_horde role against localhost with
 # ai_horde_start_services=false so only configs are rendered.
+# Risk category: deploy-safety, operational
 
 - name: Render AI-Horde local deployment
   hosts: localhost
@@ -24,10 +25,16 @@
     ai_horde_admins: ["test_user#1"]
     ai_horde_repo: "https://github.com/Haidra-Org/AI-Horde.git"
     ai_horde_repo_version: "main"
+    # Build from the cloned runtime source so local-deploy picks up the
+    # pyproject telemetry-profiling group instead of pulling the default image.
+    ai_horde_build_context: "./src"
+    ai_horde_image: "ai-horde:local"
+    ai_horde_build_dependency_groups:
+      - telemetry-profiling
     ai_horde_pyroscope_enabled: "true"
     ai_horde_pyroscope_tenant_id: "ai-horde-app"
     # Local-deploy: keep every trace at the source for full fidelity during dev.
-    # Production default is 0.10 (see roles/ai_horde/defaults/main.yml).
+    # The role default is 1.0; lower this only for sustained high-RPS deployments.
     ai_horde_otel_traces_sampler_arg: "1.0"
     ai_horde_deployment_environment: "local-deploy"
     ai_horde_embedded_postgres_enabled: true

@@ -13,9 +13,11 @@
 #   ./tests/full_stack/local_deploy.sh up --with-worker       # + GPU worker
 #   ./tests/full_stack/local_deploy.sh up --latest            # follow default branches instead of pinned SHAs
 #   ./tests/full_stack/local_deploy.sh up --all               # everything
+#   ./tests/full_stack/local_deploy.sh up --local-ai-horde ../AI-Horde  # sync a local checkout; must support telemetry-profiling
 #   ./tests/full_stack/local_deploy.sh down
 #   ./tests/full_stack/local_deploy.sh status
 #   ./tests/full_stack/local_deploy.sh logs [service]
+# Risk category: deploy-safety, operational
 
 set -euo pipefail
 
@@ -82,6 +84,7 @@ fi
 # Override via env or the --local-ai-horde / --local-frontpage flags.
 AI_HORDE_LOCAL_SRC="${AI_HORDE_LOCAL_SRC:-}"
 FRONTPAGE_LOCAL_SRC="${FRONTPAGE_LOCAL_SRC:-}"
+AI_HORDE_PROFILING_DEPENDENCY_GROUP="telemetry-profiling"
 
 
 # Each tier has its own wrapper so that the compose project name and
@@ -315,6 +318,8 @@ clone_sources() {
     _patch_dockerfile "$LOCAL_ROOT/ai-horde/src/Dockerfile"
   fi
 
+  validate_local_ai_horde_profiling_support
+
   # AiHordeFrontpage source
   if [ -n "$FRONTPAGE_LOCAL_SRC" ]; then
     sync_local_source "$FRONTPAGE_LOCAL_SRC" "$LOCAL_ROOT/frontpage/src" "AiHordeFrontpage"
@@ -331,6 +336,30 @@ clone_sources() {
       "https://github.com/Haidra-Org/artbot.git" \
       "$LOCAL_ROOT/artbot/src" \
       "$artbot_ref"
+  fi
+}
+
+validate_local_ai_horde_profiling_support() {
+  if [ -z "$AI_HORDE_LOCAL_SRC" ]; then
+    return 0
+  fi
+
+  local source_dir="$LOCAL_ROOT/ai-horde/src"
+  local pyproject="$source_dir/pyproject.toml"
+  local dockerfile="$source_dir/Dockerfile"
+
+  if ! grep -q "$AI_HORDE_PROFILING_DEPENDENCY_GROUP" "$pyproject" 2>/dev/null; then
+    err "--local-ai-horde source is missing pyproject dependency group: $AI_HORDE_PROFILING_DEPENDENCY_GROUP"
+    err "Local full-stack deploy enables PYROSCOPE_ENABLED=true and builds with that dependency group."
+    err "Point --local-ai-horde at a checkout containing the profiling optional dependency changes."
+    exit 1
+  fi
+
+  if ! grep -q "AI_HORDE_DEPENDENCY_GROUPS" "$dockerfile" 2>/dev/null; then
+    err "--local-ai-horde source Dockerfile does not accept AI_HORDE_DEPENDENCY_GROUPS."
+    err "Without that build arg, the local image can start with PYROSCOPE_ENABLED=true but no Pyroscope package installed."
+    err "Point --local-ai-horde at a checkout containing the profiling Dockerfile changes."
+    exit 1
   fi
 }
 
@@ -1031,6 +1060,7 @@ main() {
       ;;
     *)
       echo "Usage: $0 {up|down|status|logs} [--with-monitoring] [--with-worker] [--with-artbot] [--latest] [--all] [--instances=N] [--local-ai-horde PATH] [--local-frontpage PATH] [-e key=value]"
+      echo "       --local-ai-horde PATH must point at a checkout whose Dockerfile supports AI_HORDE_DEPENDENCY_GROUPS and telemetry-profiling."
       exit 1
       ;;
   esac

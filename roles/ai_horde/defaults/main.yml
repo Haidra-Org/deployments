@@ -1,8 +1,13 @@
 ---
 # AI-Horde backend deployment defaults
 
-# Docker image for AI-Horde backend.
-ai_horde_image: "ghcr.io/haidra-org/ai-horde:main"
+# Docker image for AI-Horde backend. The default image omits Pyroscope's
+# optional native profiling wheels; when ai_horde_pyroscope_enabled is true,
+# the role selects the matching telemetry image unless ai_horde_image is
+# explicitly overridden by the inventory.
+ai_horde_default_image: "ghcr.io/haidra-org/ai-horde:main"
+ai_horde_telemetry_image: "ghcr.io/haidra-org/ai-horde:main-telemetry"
+ai_horde_image: "{{ ai_horde_telemetry_image if ai_horde_pyroscope_enabled | bool else ai_horde_default_image }}"
 
 # Optional: when set, render a `build:` directive so `docker compose build`
 # rebuilds the image from a local source checkout instead of using the
@@ -11,6 +16,11 @@ ai_horde_image: "ghcr.io/haidra-org/ai-horde:main"
 # leave this empty so the registry image is used as-is.
 ai_horde_build_context: ""
 ai_horde_build_dockerfile: ""
+# Optional pyproject dependency groups passed to Docker builds through the
+# AI_HORDE_DEPENDENCY_GROUPS build arg. The compose template automatically adds
+# ai_horde_pyroscope_dependency_group when ai_horde_pyroscope_enabled is true.
+ai_horde_build_dependency_groups: []
+ai_horde_pyroscope_dependency_group: "telemetry-profiling"
 
 # Optional list of extra docker-compose env_file entries to attach to the
 # AI-Horde service. Each entry is either an absolute path or a basename

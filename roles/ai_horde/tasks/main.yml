@@ -23,6 +23,15 @@
       Choose a dedicated path such as /var/lib/ai-horde (the default).
   when: ai_horde_data_dir is match('(/var/lib/postgresql|/var/lib/pgsql)(/.*)?$')
 
+- name: Guard - configure Pyroscope through role variable, not env overrides
+  ansible.builtin.fail:
+    msg: >-
+      Do not set PYROSCOPE_ENABLED through ai_horde_env_overrides. Use
+      ai_horde_pyroscope_enabled instead so the role can select the
+      telemetry-enabled AI-Horde image, or add the telemetry-profiling
+      dependency group to a local Docker build.
+  when: "'PYROSCOPE_ENABLED' in (ai_horde_env_overrides | default({}))"
+
 - name: Guard - embedded datastores must not be used in production without explicit override
   ansible.builtin.fail:
     msg: >-
