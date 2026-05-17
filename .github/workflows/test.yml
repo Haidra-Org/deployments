@@ -57,6 +57,9 @@ jobs:
           yamllint $(find roles/ -name '*.yml' -not -path 'roles/geerlingguy.*/*') \
             tests/**/*.yml examples/
 
+      - name: package module policy
+        run: bash tests/check_package_module_policy.sh
+
       - name: ansible-lint
         run: |
           shopt -s globstar
