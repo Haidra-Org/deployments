@@ -22,13 +22,6 @@
     horde_model_reference_otel_sdk_disabled: "true"
     horde_model_reference_env_overrides:
       CUSTOM_VAR: "test_value"
-
-    # Package manager ansible modules
-    pkg_modules:
-      Debian: "ansible.builtin.apt"
-      Archlinux: "community.general.pacman"
-      RedHat: "ansible.builtin.dnf"
-      default: "ansible.builtin.package"
   roles:
     - horde_model_reference
 
@@ -315,6 +308,7 @@
 - name: Test horde_model_reference HAProxy conf.d fragment rendering
   hosts: testhost
   become: true
+  gather_facts: true
   vars:
     horde_model_reference_start_services: false
     horde_model_reference_haproxy_enabled: true
@@ -322,16 +316,10 @@
     horde_model_reference_base_dir: /opt/horde-model-reference-haproxy-test
 
   pre_tasks:
-    - name: Determine distrobution for package installation
-      ansible.builtin.set_fact:
-        target_pkg_module: >-
-          {{ pkg_modules[ansible_facts['distribution']]
-            | default(pkg_modules[ansible_facts['os_family']])
-            | default(pkg_modules['default']) }}
-
-    - name: Using {{ target_pkg_module.split('.')[-1] }}
-      ansible.builtin.include_tasks: "install_{{ target_pkg_module.split('.')[-1] }}.yml"
-
+    - name: Install HAProxy for config validation
+      ansible.builtin.package:
+        name: haproxy
+        state: present
 
     - name: Create HAProxy config directory for test
       ansible.builtin.file:

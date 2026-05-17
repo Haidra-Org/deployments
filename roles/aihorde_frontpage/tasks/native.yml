@@ -5,8 +5,12 @@
 # When aihorde_frontpage_start_services=false, this file renders service
 # configuration only and skips network/package/build operations.
 
-- name: Using {{ target_pkg_module.split('.')[-1] }}
-  ansible.builtin.include_tasks: "install_{{ target_pkg_module.split('.')[-1] }}.yml"
+- name: Install git for source checkout
+  ansible.builtin.package:
+    name: git
+    state: present
+  become: true
+  when: aihorde_frontpage_start_services | bool
 
 - name: Install Node.js via geerlingguy.nodejs
   ansible.builtin.include_role:

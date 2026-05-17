@@ -1,6 +1,0 @@
-- name: Ensure HAProxy is installed (conf.d bootstrap)
-  community.general.pacman:
-    name: haproxy
-    state: present
-  become: true
-  when: haproxy_confd_install | default(true) | bool

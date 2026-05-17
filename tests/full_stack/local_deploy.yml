@@ -84,21 +84,6 @@
     horde_model_reference_port: 19800
     horde_model_reference_log_driver: "local"
 
-    # Package manager ansible modules
-    pkg_modules:
-      Debian: "ansible.builtin.apt"
-      Archlinux: "community.general.pacman"
-      RedHat: "ansible.builtin.dnf"
-      default: "ansible.builtin.package"
-
-  pre_tasks:
-    - name: Determine distrobution for package installation
-      ansible.builtin.set_fact:
-        target_pkg_module: >-
-          {{ pkg_modules[ansible_facts['distribution']]
-            | default(pkg_modules[ansible_facts['os_family']])
-            | default(pkg_modules['default']) }}
-
   roles:
     - ai_horde
     - aihorde_frontpage

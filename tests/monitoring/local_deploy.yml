@@ -95,13 +95,6 @@
     _local_exporter_repo_url: "https://github.com/Haidra-Org/horde-exporters"
     _local_exporter_repo_ref: "main"
 
-    # Package manager ansible modules
-    pkg_modules:
-      Debian: "ansible.builtin.apt"
-      Archlinux: "community.general.pacman"
-      RedHat: "ansible.builtin.dnf"
-      default: "ansible.builtin.package"
-
   pre_tasks:
     - name: Ensure local secret directory exists
       ansible.builtin.file:
@@ -140,13 +133,6 @@
           Generated Garage credentials are invalid. Remove files in
           {{ _local_secret_dir }} and re-run this playbook.
       become: false
-
-    - name: Determine distrobution for package installation
-      ansible.builtin.set_fact:
-        target_pkg_module: >-
-          {{ pkg_modules[ansible_facts['distribution']]
-            | default(pkg_modules[ansible_facts['os_family']])
-            | default(pkg_modules['default']) }}
 
   roles:
     - role: horde_monitoring

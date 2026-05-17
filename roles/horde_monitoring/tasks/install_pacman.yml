@@ -1,5 +1,0 @@
-- name: Install git (needed for dashboard checkout)
-  community.general.pacman:
-    name: git
-    state: present
-  become: true
