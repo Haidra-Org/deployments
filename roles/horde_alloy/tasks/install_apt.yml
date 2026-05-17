@@ -1,0 +1,53 @@
+---
+# Install Grafana Alloy from the official Grafana APT/RPM repository.
+# Uses the modern signed-by approach (no apt-key).
+
+- name: Install prerequisite packages
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - software-properties-common
+      - gpg
+    state: present
+    update_cache: true
+  become: true
+
+- name: Ensure APT keyrings directory exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Add Grafana GPG signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /etc/apt/keyrings/grafana.asc
+    mode: "0644"
+  become: true
+
+- name: Add Grafana APT repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/etc/apt/keyrings/grafana.asc]
+      https://apt.grafana.com stable main
+    state: present
+    filename: grafana
+  become: true
+
+- name: Install Alloy package (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "alloy={{ horde_alloy_version }}*"
+    state: present
+    update_cache: true
+  become: true
+  notify: Restart alloy
+
+- name: Add alloy user to docker group for container log collection
+  ansible.builtin.user:
+    name: alloy
+    groups: docker
+    append: true
+  become: true
+  notify: Restart alloy
+  when: horde_alloy_collect_docker_logs | bool

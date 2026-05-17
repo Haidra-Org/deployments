@@ -1,15 +1,7 @@
 ---
-- name: Ensure kernel packages are installed
-  ansible.builtin.apt:
-    state: present
-    update_cache: true
-    pkg:
-      - "linux-headers-{{ ansible_kernel }}"
-      - "linux-modules-extra-{{ ansible_kernel }}"
-  notify: Reboot the server
-  tags:
-    - packages
-    - rocm
+
+- name: Using {{ target_pkg_module.split('.')[-1] }}
+  ansible.builtin.include_tasks: "install_{{ target_pkg_module.split('.')[-1] }}.yml"
 
 - name: Ensure user is in the right groups ({{ ansible_user }})
   ansible.builtin.user:
@@ -19,22 +11,6 @@
       - render
     append: true
   tags: rocm
-
-- name: Ensure the relevant deb package is installed
-  ansible.builtin.apt:
-    deb: https://repo.radeon.com/amdgpu-install/6.2/ubuntu/jammy/amdgpu-install_6.2.60200-1_all.deb
-
-- name: Ensure rocm packages are installed
-  ansible.builtin.apt:
-    state: present
-    update_cache: true
-    pkg:
-      - amdgpu-dkms
-      - rocm
-  notify: Reboot the server
-  tags:
-    - packages
-    - rocm
 
 - name: Force all notified handlers to run at this point.
   ansible.builtin.meta: flush_handlers

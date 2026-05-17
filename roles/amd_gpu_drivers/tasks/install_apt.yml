@@ -1,0 +1,27 @@
+- name: Ensure kernel packages are installed
+  ansible.builtin.apt:
+    state: present
+    update_cache: true
+    pkg:
+      - "linux-headers-{{ ansible_kernel }}"
+      - "linux-modules-extra-{{ ansible_kernel }}"
+  notify: Reboot the server
+  tags:
+    - packages
+    - rocm
+
+- name: Ensure the relevant deb package is installed
+  ansible.builtin.apt:
+    deb: https://repo.radeon.com/amdgpu-install/6.2/ubuntu/jammy/amdgpu-install_6.2.60200-1_all.deb
+
+- name: Ensure rocm packages are installed
+  ansible.builtin.apt:
+    state: present
+    update_cache: true
+    pkg:
+      - amdgpu-dkms
+      - rocm
+  notify: Reboot the server
+  tags:
+    - packages
+    - rocm

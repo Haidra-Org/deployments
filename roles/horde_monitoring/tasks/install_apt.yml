@@ -1,0 +1,5 @@
+- name: Install git (needed for dashboard checkout)
+  ansible.builtin.apt:
+    name: git
+    state: present
+  become: true

@@ -1,0 +1,20 @@
+- name: Ensure kernel packages are installed
+  community.general.pacman:
+    state: present
+    pkg:
+      - "linux-headers-{{ ansible_kernel }}"
+  notify: Reboot the server
+  tags:
+    - packages
+    - rocm
+
+- name: Ensure ROCm packages are installed
+  community.general.pacman:
+    state: present
+    pkg:
+      - rocm-hip-sdk
+      - rocm-opencl-sdk
+  notify: Reboot the server
+  tags:
+    - packages
+    - rocm

@@ -1,0 +1,10 @@
+- name: Install dependencies
+  community.general.pacman:
+    state: present
+    update_cache: true
+    pkg:
+      - git
+      - jemalloc
+  tags:
+    - packages
+    - worker

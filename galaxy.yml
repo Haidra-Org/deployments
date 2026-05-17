@@ -10,6 +10,7 @@ dependencies:
   "prometheus.prometheus": ">=0.16.0,<1.0.0"
   "grafana.grafana": ">=6.0.0,<7.0.0"
   "community.postgresql": ">=3.4.0,<4.0.0"
+  "community.general": ">=12.6.0,<13.0.0"
 license:
   - "AGPL-3.0-or-later"
 tags:

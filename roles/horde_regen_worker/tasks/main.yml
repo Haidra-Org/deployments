@@ -1,14 +1,7 @@
 ---
-- name: Install dependencies
-  ansible.builtin.apt:
-    state: present
-    update_cache: true
-    pkg:
-      - git
-      - libjemalloc2
-  tags:
-    - packages
-    - worker
+
+- name: Using {{ target_pkg_module.split('.')[-1] }}
+  ansible.builtin.include_tasks: "install_{{ target_pkg_module.split('.')[-1] }}.yml"
 
 - name: Fail if worker API key is missing or placeholder
   ansible.builtin.assert:

@@ -1,0 +1,27 @@
+---
+# Install Grafana Alloy from arch AUR using yay.
+
+- name: Install prerequisite packages
+  community.general.pacman:
+    name:
+      - apt-transport-https
+      - yay
+    state: present
+  become: true
+
+- name: Install Alloy package
+  community.general.pacman:
+    name: "grafana-alloy-bin"
+    state: present
+    executable: yay
+  become: true
+  notify: Restart alloy
+
+- name: Add alloy user to docker group for container log collection
+  ansible.builtin.user:
+    name: alloy
+    groups: docker
+    append: true
+  become: true
+  notify: Restart alloy
+  when: horde_alloy_collect_docker_logs | bool
