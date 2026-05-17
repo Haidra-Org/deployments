@@ -1,9 +1,8 @@
 ---
 - name: Install dependencies
-  ansible.builtin.apt:
+  ansible.builtin.package:
     state: present
-    update_cache: true
-    pkg:
+    name:
       - certbot
       - haproxy
       - python3-cryptography
