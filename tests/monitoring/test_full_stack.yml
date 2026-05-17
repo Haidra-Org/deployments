@@ -25,23 +25,11 @@
     horde_monitoring_start_services: false
     horde_monitoring_mimir_backup_enabled: false
 
-    # Package manager ansible modules
-    pkg_modules:
-      Debian: "ansible.builtin.apt"
-      Archlinux: "community.general.pacman"
-      RedHat: "ansible.builtin.dnf"
-      default: "ansible.builtin.package"
-
   pre_tasks:
-    - name: Determine distrobution for package installation
-      ansible.builtin.set_fact:
-        target_pkg_module: >-
-          {{ pkg_modules[ansible_facts['distribution']]
-            | default(pkg_modules[ansible_facts['os_family']])
-            | default(pkg_modules['default']) }}
-
-    - name: Using {{ target_pkg_module.split('.')[-1] }}
-      ansible.builtin.include_tasks: "install_{{ target_pkg_module.split('.')[-1] }}.yml"
+    - name: Install HAProxy for config validation
+      ansible.builtin.package:
+        name: haproxy
+        state: present
 
     - name: Create HAProxy config directory for test
       ansible.builtin.file:
@@ -572,10 +560,9 @@
 
   pre_tasks:
     - name: Install HAProxy for config validation
-      ansible.builtin.apt:
+      ansible.builtin.package:
         name: haproxy
         state: present
-        update_cache: true
 
     - name: Create HAProxy config directory for test
       ansible.builtin.file:

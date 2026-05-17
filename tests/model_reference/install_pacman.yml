@@ -1,4 +1,0 @@
-- name: Install HAProxy for config validation
-  community.general.pacman:
-    name: haproxy
-    state: present

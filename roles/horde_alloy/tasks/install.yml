@@ -2,5 +2,14 @@
 # Install Grafana Alloy from the official Grafana APT/RPM repository.
 # Uses the modern signed-by approach (no apt-key).
 
-- name: Install Grafana Alloy using {{ target_pkg_module.split('.')[-1] }}
-  ansible.builtin.include_tasks: "install_{{ target_pkg_module.split('.')[-1] }}.yml"
+- name: Install Grafana Alloy
+  ansible.builtin.include_tasks: "install_{{ ansible_facts.pkg_mgr }}.yml"
+
+- name: Add alloy user to docker group for container log collection
+  ansible.builtin.user:
+    name: alloy
+    groups: docker
+    append: true
+  become: true
+  notify: Restart alloy
+  when: horde_alloy_collect_docker_logs | bool

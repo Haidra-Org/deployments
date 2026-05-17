@@ -1,12 +1,3 @@
-- name: Add alloy user to docker group for container log collection
-  ansible.builtin.user:
-    name: alloy
-    groups: docker
-    append: true
-  become: true
-  notify: Restart alloy
-  when: horde_alloy_collect_docker_logs | bool
-
 - name: Add Grafana RPM repository
   ansible.builtin.yum_repository:
     name: grafana

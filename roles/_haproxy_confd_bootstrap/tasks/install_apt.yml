@@ -1,7 +1,0 @@
-- name: Ensure HAProxy is installed (conf.d bootstrap)
-  ansible.builtin.apt:
-    name: haproxy
-    state: present
-    update_cache: true
-  become: true
-  when: haproxy_confd_install | default(true) | bool

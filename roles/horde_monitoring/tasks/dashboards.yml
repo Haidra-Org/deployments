@@ -30,8 +30,11 @@
   become: true
   loop: "{{ ['app', 'app-public'] + (['infra'] if horde_monitoring_grafana_provision_infra_dashboards | bool else []) }}"
 
-- name: Install git using {{ target_pkg_module.split('.')[-1] }}
-  ansible.builtin.include_tasks: "install_{{ target_pkg_module.split('.')[-1] }}.yml"
+- name: Install git for dashboard checkout
+  ansible.builtin.package:
+    name: git
+    state: present
+  become: true
   when: horde_monitoring_grafana_dashboards_source == 'git'
 
 - name: Clone horde-exporters repository (shallow)

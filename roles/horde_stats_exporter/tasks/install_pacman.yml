@@ -1,6 +1,0 @@
-- name: Install system dependencies for Ansible modules
-  community.general.pacman:
-    name:
-      - python3
-    state: present
-  become: true

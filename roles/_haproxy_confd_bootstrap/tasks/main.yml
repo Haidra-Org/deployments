@@ -1,8 +1,12 @@
 ---
 # Installs haproxy if missing, sets up conf.d, and patches systemd.
 
-- name: Using {{ target_pkg_module.split('.')[-1] }}
-  ansible.builtin.include_tasks: "install_{{ target_pkg_module.split('.')[-1] }}.yml"
+- name: Ensure HAProxy is installed (conf.d bootstrap)
+  ansible.builtin.package:
+    name: haproxy
+    state: present
+  become: true
+  when: haproxy_confd_install | default(true) | bool
 
 - name: Ensure HAProxy conf.d and override directories exist
   ansible.builtin.file:

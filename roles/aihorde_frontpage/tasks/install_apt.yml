@@ -1,7 +1,0 @@
-- name: Install git for source checkout
-  ansible.builtin.apt:
-    name: git
-    state: present
-    update_cache: true
-  become: true
-  when: aihorde_frontpage_start_services | bool

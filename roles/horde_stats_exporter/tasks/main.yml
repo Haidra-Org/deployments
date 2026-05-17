@@ -2,8 +2,11 @@
 # AI Horde Stats Exporter Deployment
 # Installs ai-horde-stats-exporter from the horde-exporters monorepo via uv
 
-- name: Using {{ target_pkg_module.split('.')[-1] }}
-  ansible.builtin.include_tasks: "install_{{ target_pkg_module.split('.')[-1] }}.yml"
+- name: Install system dependencies for Ansible modules
+  ansible.builtin.package:
+    name: python3
+    state: present
+  become: true
 
 - name: Bootstrap uv (Python package manager)  # noqa: var-naming[no-role-prefix]
   ansible.builtin.include_role:

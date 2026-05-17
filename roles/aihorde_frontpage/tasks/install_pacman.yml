@@ -1,6 +1,0 @@
-- name: Install git for source checkout
-  community.general.pacman:
-    name: git
-    state: present
-  become: true
-  when: aihorde_frontpage_start_services | bool

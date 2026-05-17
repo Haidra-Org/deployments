@@ -35,21 +35,6 @@
     ai_horde_env_overrides:
       KUDOS_TRUST_THRESHOLD: "100"
 
-    # Package manager ansible modules
-    pkg_modules:
-      Debian: "ansible.builtin.apt"
-      Archlinux: "community.general.pacman"
-      RedHat: "ansible.builtin.dnf"
-      default: "ansible.builtin.package"
-
-  pre_tasks:
-    - name: Determine distrobution for package installation
-      ansible.builtin.set_fact:
-        target_pkg_module: >-
-          {{ pkg_modules[ansible_facts['distribution']]
-            | default(pkg_modules[ansible_facts['os_family']])
-            | default(pkg_modules['default']) }}
-
   roles:
     - ai_horde
 
