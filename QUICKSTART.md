@@ -18,6 +18,11 @@ All local workflows require:
 - **Docker** with **Compose V2**: `docker compose version` should print `v2.x+`
 - **git**
 
+Your user must be able to run Docker commands. Local deploy scripts also touch
+generated runtime directories and may use `sudo` during cleanup; production
+playbooks use Ansible `become` for host configuration such as packages,
+systemd, `/opt`, and `/var/lib` paths.
+
 Local workflows also need **Ansible**, which we suggest installing in a Python virtual environment to avoid polluting your system Python:
 
 ```bash
