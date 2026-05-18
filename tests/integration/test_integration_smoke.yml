@@ -167,3 +167,20 @@
         that:
           - "'horde-bridge.sh' in _worker_service.content | b64decode"
           - "'/home/testworker/horde-worker-regen' in _worker_service.content | b64decode"
+
+    - name: Read integration local-deploy harness files from controller
+      ansible.builtin.set_fact:
+        _integration_local_deploy_playbook: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/local_deploy.yml') }}"
+        _integration_local_deploy_script: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/local_deploy.sh') }}"
+
+    - name: Assert integration local-deploy includes local Garage R2 wiring
+      ansible.builtin.assert:
+        that:
+          - "'.env.garage' in _integration_local_deploy_playbook"
+          - "'../local_garage.yml' in _integration_local_deploy_playbook"
+          - "'local_garage_local_deploy_env' in _integration_local_deploy_playbook"
+          - "'docker-compose.garage.yml' in _integration_local_deploy_script"
+          - "'load_env \"$AI_HORDE_DIR/local-deploy.env\"' in _integration_local_deploy_script"
+          - "'dc up -d s3-store' in _integration_local_deploy_script"
+          - "'bootstrap_embedded_garage' in _integration_local_deploy_script"
+        fail_msg: "Integration local-deploy no longer starts/wires Garage for local R2/source-image storage"

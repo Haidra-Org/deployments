@@ -1,5 +1,6 @@
 ---
 # idempotency: skip
+# Risk category: deploy-safety, operational
 # Full-stack render-only test: validates that all compose files, network
 # overlays, and HAProxy config are rendered correctly without Docker.
 # Safe for CI — no containers started, no network access needed.
@@ -20,6 +21,10 @@
     ai_horde_secret_key: "test-secret"
     ai_horde_env_overrides:
       KUDOS_TRUST_THRESHOLD: "100"
+    ai_horde_extra_env_files:
+      - .env.garage
+    local_garage_runtime_root: /tmp/fullstack-test
+    local_garage_attach_horde_stack: true
     # Embedded datastores for render test (non-production environment)
     ai_horde_embedded_postgres_enabled: true
     ai_horde_embedded_redis_enabled: true
@@ -74,6 +79,9 @@
       vars:
         horde_service_alerts_start_services: false
 
+    - name: Render local Garage for full-stack AI-Horde R2/source-image storage
+      ansible.builtin.import_tasks: ../local_garage.yml
+
   post_tasks:
     - name: Assert AI-Horde compose exists
       ansible.builtin.stat:
@@ -83,6 +91,77 @@
       ansible.builtin.assert:
         that: aihorde_compose.stat.exists
         fail_msg: "AI-Horde docker-compose.yml not rendered"
+
+    - name: Read AI-Horde compose
+      ansible.builtin.slurp:
+        path: /tmp/fullstack-test/ai-horde/docker-compose.yml
+      register: aihorde_compose_content
+
+    - name: Assert AI-Horde compose loads local Garage env overlay
+      ansible.builtin.assert:
+        that:
+          - "'.env.garage' in (aihorde_compose_content.content | b64decode)"
+          - "'required: false' in (aihorde_compose_content.content | b64decode)"
+        fail_msg: "AI-Horde compose does not load optional local Garage env overlay"
+
+    - name: Read AI-Horde Garage compose overlay
+      ansible.builtin.slurp:
+        path: /tmp/fullstack-test/ai-horde/docker-compose.garage.yml
+      register: aihorde_garage_compose_content
+
+    - name: Assert local Garage compose overlay attaches to AI-Horde and full-stack networks
+      ansible.builtin.assert:
+        that:
+          - "'s3-store:' in (aihorde_garage_compose_content.content | b64decode)"
+          - "'container_name: s3-store' in (aihorde_garage_compose_content.content | b64decode)"
+          - "'garage.toml:/etc/garage.toml:ro' in (aihorde_garage_compose_content.content | b64decode)"
+          - "'127.0.0.1:3900:3900' in (aihorde_garage_compose_content.content | b64decode)"
+          - "'127.0.0.1:3903:3903' in (aihorde_garage_compose_content.content | b64decode)"
+          - "'aihorde_network' in (aihorde_garage_compose_content.content | b64decode)"
+          - "'horde-stack' in (aihorde_garage_compose_content.content | b64decode)"
+          - "'external: true' in (aihorde_garage_compose_content.content | b64decode)"
+        fail_msg: "Local Garage compose overlay no longer joins AI-Horde/full-stack networks"
+
+    - name: Read AI-Horde Garage env overlay
+      ansible.builtin.slurp:
+        path: /tmp/fullstack-test/ai-horde/.env.garage
+      register: aihorde_garage_env_content
+
+    - name: Assert local Garage env overlay points AI-Horde R2 at Garage
+      ansible.builtin.assert:
+        that:
+          - "'R2_TRANSIENT_ACCOUNT=http://s3-store:3900' in (aihorde_garage_env_content.content | b64decode)"
+          - "'R2_PERMANENT_ACCOUNT=http://s3-store:3900' in (aihorde_garage_env_content.content | b64decode)"
+          - "'R2_TRANSIENT_BUCKET=aihorde-r2' in (aihorde_garage_env_content.content | b64decode)"
+          - "'R2_PERMANENT_BUCKET=aihorde-r2' in (aihorde_garage_env_content.content | b64decode)"
+          - "'R2_SOURCE_IMAGE_BUCKET=aihorde-r2' in (aihorde_garage_env_content.content | b64decode)"
+          - "'AWS_DEFAULT_REGION=garage' in (aihorde_garage_env_content.content | b64decode)"
+          - "'SHARED_AWS_ACCESS_ID=GK' in (aihorde_garage_env_content.content | b64decode)"
+        fail_msg: "Local Garage env overlay no longer configures AI-Horde R2 variables"
+
+    - name: Read full-stack local deploy script
+      ansible.builtin.slurp:
+        path: "{{ playbook_dir }}/local_deploy.sh"
+      register: fullstack_local_deploy_script
+
+    - name: Assert full-stack local deploy wires AI-Horde R2 to Garage
+      ansible.builtin.assert:
+        that:
+          - "'docker-compose.garage.yml' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'Starting local Garage for AI-Horde R2/source-image storage' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'dc_backend up -d s3-store' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'bootstrap_embedded_garage' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'R2_TRANSIENT_ACCOUNT=http://s3-store:3900' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'R2_PERMANENT_ACCOUNT=http://s3-store:3900' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'R2_TRANSIENT_BUCKET=${GARAGE_S3_AIHORDE_BUCKET}' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'R2_PERMANENT_BUCKET=${GARAGE_S3_AIHORDE_BUCKET}' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'R2_SOURCE_IMAGE_BUCKET=${GARAGE_S3_AIHORDE_BUCKET}' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'AWS_ACCESS_KEY_ID=${GARAGE_S3_ACCESS_KEY_ID}' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'AWS_SECRET_ACCESS_KEY=${secret}' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'SHARED_AWS_ACCESS_ID=${GARAGE_S3_ACCESS_KEY_ID}' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'SHARED_AWS_ACCESS_KEY=${secret}' in (fullstack_local_deploy_script.content | b64decode)"
+          - "'wire_aihorde_to_garage || warn' in (fullstack_local_deploy_script.content | b64decode)"
+        fail_msg: "Full-stack local deploy no longer wires AI-Horde R2 variables to Garage"
 
     - name: Assert Frontpage compose exists
       ansible.builtin.stat:

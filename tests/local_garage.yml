@@ -1,0 +1,169 @@
+---
+# Shared local-deploy Garage rendering for AI-Horde source-image/R2 flows.
+# Imported by local deploy playbooks that include AI-Horde.
+
+- name: Configure local Garage paths and defaults
+  ansible.builtin.set_fact:
+    local_garage_runtime_root: "{{ local_garage_runtime_root | default(playbook_dir ~ '/../../local-deploy/runtime') }}"
+    local_garage_ai_horde_base_dir: "{{ local_garage_ai_horde_base_dir | default(ai_horde_base_dir) }}"
+    local_garage_bucket: "{{ local_garage_bucket | default('aihorde-r2') }}"
+    local_garage_access_key_name: "{{ local_garage_access_key_name | default('aihorde-local') }}"
+    local_garage_api_port: "{{ local_garage_api_port | default(3900) }}"
+    local_garage_admin_port: "{{ local_garage_admin_port | default(3903) }}"
+    local_garage_rpc_port: "{{ local_garage_rpc_port | default(3901) }}"
+    local_garage_memory_limit: "{{ local_garage_memory_limit | default('512m') }}"
+    local_garage_image: "{{ local_garage_image | default('dxflrs/garage:v2.1.0') }}"
+    local_garage_region: "{{ local_garage_region | default('garage') }}"
+    local_garage_capacity_bytes: "{{ local_garage_capacity_bytes | default('1099511627776') }}"
+    local_garage_attach_horde_stack: "{{ local_garage_attach_horde_stack | default(false) }}"
+
+- name: Configure local Garage derived paths
+  ansible.builtin.set_fact:
+    local_garage_root: "{{ local_garage_runtime_root }}/garage"
+    local_garage_secret_dir: "{{ local_garage_runtime_root }}/.secrets/garage"
+    local_garage_config_dir: "{{ local_garage_runtime_root }}/garage/config"
+    local_garage_data_dir: "{{ local_garage_runtime_root }}/garage/data"
+    local_garage_metadata_dir: "{{ local_garage_runtime_root }}/garage/meta"
+
+- name: Configure local Garage secret file paths
+  ansible.builtin.set_fact:
+    local_garage_access_key_suffix_file: "{{ local_garage_secret_dir }}/access-key-suffix"
+    local_garage_secret_key_file: "{{ local_garage_secret_dir }}/secret-key"
+    local_garage_rpc_secret_file: "{{ local_garage_secret_dir }}/rpc-secret"
+    local_garage_admin_token_file: "{{ local_garage_secret_dir }}/admin-token"
+
+- name: Ensure local Garage directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - "{{ local_garage_secret_dir }}"
+    - "{{ local_garage_config_dir }}"
+    - "{{ local_garage_data_dir }}"
+    - "{{ local_garage_metadata_dir }}"
+
+- name: Generate stable local Garage credentials
+  ansible.builtin.set_fact:
+    local_garage_access_key_suffix: "{{ lookup('ansible.builtin.password', local_garage_access_key_suffix_file ~ ' length=24 chars=hexdigits') | lower }}"
+    local_garage_secret_key: "{{ lookup('ansible.builtin.password', local_garage_secret_key_file ~ ' length=64 chars=hexdigits') | lower }}"
+    local_garage_rpc_secret: "{{ lookup('ansible.builtin.password', local_garage_rpc_secret_file ~ ' length=64 chars=hexdigits') | lower }}"
+    local_garage_admin_token: "{{ lookup('ansible.builtin.password', local_garage_admin_token_file ~ ' length=32 chars=ascii_letters,digits') }}"
+  no_log: true
+
+- name: Configure local Garage access key and shell env
+  ansible.builtin.set_fact:
+    local_garage_access_key_id: "GK{{ local_garage_access_key_suffix }}"
+    local_garage_local_deploy_env: |
+      GARAGE_S3_ADMIN_PORT={{ local_garage_admin_port }}
+      GARAGE_S3_ACCESS_KEY_NAME='{{ local_garage_access_key_name }}'
+      GARAGE_S3_ACCESS_KEY_ID='GK{{ local_garage_access_key_suffix }}'
+      GARAGE_S3_ACCESS_KEY_SUFFIX_FILE='{{ local_garage_access_key_suffix_file }}'
+      GARAGE_S3_SECRET_KEY_FILE='{{ local_garage_secret_key_file }}'
+      GARAGE_S3_CAPACITY_BYTES='{{ local_garage_capacity_bytes }}'
+      GARAGE_S3_AIHORDE_BUCKET='{{ local_garage_bucket }}'
+      GARAGE_S3_API_PORT={{ local_garage_api_port }}
+
+- name: Assert local Garage credentials have expected shape
+  ansible.builtin.assert:
+    that:
+      - local_garage_access_key_id is match('^GK[0-9a-f]{24}$')
+      - local_garage_secret_key is match('^[0-9a-f]{64}$')
+      - local_garage_rpc_secret is match('^[0-9a-f]{64}$')
+    fail_msg: "Generated local Garage credentials do not match Garage import requirements."
+  no_log: true
+
+- name: Render local Garage config
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible - do not edit manually
+
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "lmdb"
+
+      replication_factor = 1
+      block_size = "1M"
+
+      rpc_bind_addr = "[::]:3901"
+      rpc_public_addr = "127.0.0.1:3901"
+      rpc_secret = "{{ local_garage_rpc_secret }}"
+
+      [s3_api]
+      s3_region = "{{ local_garage_region }}"
+      api_bind_addr = "[::]:3900"
+      root_domain = ".s3.garage.localhost"
+
+      [s3_web]
+      bind_addr = "[::]:3902"
+      root_domain = ".web.garage.localhost"
+      index = "index.html"
+
+      [admin]
+      api_bind_addr = "[::]:3903"
+      admin_token = "{{ local_garage_admin_token }}"
+      metrics_token = "{{ local_garage_admin_token }}"
+    dest: "{{ local_garage_config_dir }}/garage.toml"
+    mode: "0600"
+  no_log: true
+
+- name: Render local Garage compose overlay for AI-Horde
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible - do not edit manually
+
+      services:
+        s3-store:
+          image: {{ local_garage_image }}
+          container_name: s3-store
+          labels:
+            horde.logs: "true"
+            horde.app: "ai-horde"
+            horde.component: "s3-store"
+          volumes:
+            - {{ local_garage_config_dir }}/garage.toml:/etc/garage.toml:ro
+            - {{ local_garage_metadata_dir }}:/var/lib/garage/meta
+            - {{ local_garage_data_dir }}:/var/lib/garage/data
+          ports:
+            - "127.0.0.1:{{ local_garage_api_port }}:3900"
+            - "127.0.0.1:{{ local_garage_admin_port }}:3903"
+          restart: unless-stopped
+          deploy:
+            resources:
+              limits:
+                memory: {{ local_garage_memory_limit }}
+          logging:
+            driver: local
+            options:
+              max-size: "25m"
+              max-file: "3"
+          networks:
+            - aihorde_network
+      {% if local_garage_attach_horde_stack | bool %}
+            - horde-stack
+
+      networks:
+        horde-stack:
+          external: true
+      {% endif %}
+    dest: "{{ local_garage_ai_horde_base_dir }}/docker-compose.garage.yml"
+    mode: "0644"
+
+- name: Render AI-Horde Garage env overlay
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible - do not edit manually
+      # Points local AI-Horde R2/S3 clients at the local Garage instance.
+      R2_TRANSIENT_ACCOUNT=http://s3-store:3900
+      R2_PERMANENT_ACCOUNT=http://s3-store:3900
+      R2_TRANSIENT_BUCKET={{ local_garage_bucket }}
+      R2_PERMANENT_BUCKET={{ local_garage_bucket }}
+      R2_SOURCE_IMAGE_BUCKET={{ local_garage_bucket }}
+      AWS_ACCESS_KEY_ID={{ local_garage_access_key_id }}
+      AWS_SECRET_ACCESS_KEY={{ local_garage_secret_key }}
+      AWS_DEFAULT_REGION={{ local_garage_region }}
+      SHARED_AWS_ACCESS_ID={{ local_garage_access_key_id }}
+      SHARED_AWS_ACCESS_KEY={{ local_garage_secret_key }}
+    dest: "{{ local_garage_ai_horde_base_dir }}/.env.garage"
+    mode: "0600"
+  no_log: true

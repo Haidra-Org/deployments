@@ -33,12 +33,12 @@
     # overwritten by a `docker pull` from the registry.
     ai_horde_image: "ai-horde:local"
 
-    # Garage S3 credentials are rendered into runtime/ai-horde/.env.garage
-    # by local_deploy.sh after the embedded Garage bootstrap completes.
-    # Loaded as a second env_file with required:false so the stack still
-    # boots cleanly when monitoring (and therefore Garage) is disabled.
+    # Garage S3 credentials are rendered into runtime/ai-horde/.env.garage.
+    # Monitoring-enabled full-stack runs may overwrite this with the
+    # monitoring Garage credentials after that stack has bootstrapped.
     ai_horde_extra_env_files:
       - .env.garage
+    local_garage_attach_horde_stack: true
 
     ai_horde_start_services: false
     ai_horde_log_driver: "local"
@@ -110,6 +110,18 @@
     - horde_service_alerts
 
   post_tasks:
+    - name: Render local Garage for AI-Horde R2/source-image storage
+      ansible.builtin.import_tasks: ../local_garage.yml
+
+    - name: Render AI-Horde local-deploy.env
+      ansible.builtin.copy:
+        content: |
+          AI_HORDE_PORT={{ ai_horde_port }}
+          AI_HORDE_BASE_DIR={{ ai_horde_base_dir }}
+          {{ local_garage_local_deploy_env }}
+        dest: "{{ ai_horde_base_dir }}/local-deploy.env"
+        mode: "0644"
+
     - name: Ensure HAProxy config directory exists
       ansible.builtin.file:
         path: "{{ playbook_dir }}/../../local-deploy/static/haproxy"

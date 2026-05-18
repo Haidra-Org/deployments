@@ -28,6 +28,8 @@
     ai_horde_embedded_postgres_enabled: true
     ai_horde_embedded_redis_enabled: true
     ai_horde_deployment_environment: "local-deploy"
+    ai_horde_extra_env_files:
+      - .env.garage
     ai_horde_env_overrides:
       KUDOS_TRUST_THRESHOLD: "100"
 
@@ -35,6 +37,9 @@
     - ai_horde
 
   post_tasks:
+    - name: Render local Garage for AI-Horde R2/source-image storage
+      ansible.builtin.import_tasks: ../local_garage.yml
+
     - name: Create integration directory
       ansible.builtin.file:
         path: "{{ playbook_dir }}/../../local-deploy/runtime/integration"
@@ -47,6 +52,7 @@
           AI_HORDE_PORT={{ ai_horde_port }}
           AI_HORDE_BASE_DIR={{ ai_horde_base_dir }}
           INTEGRATION_DIR={{ playbook_dir }}/../../local-deploy/runtime/integration
+          {{ local_garage_local_deploy_env }}
         dest: "{{ playbook_dir }}/../../local-deploy/runtime/integration/local-deploy.env"
         mode: "0644"
 
@@ -55,6 +61,7 @@
         content: |
           AI_HORDE_PORT={{ ai_horde_port }}
           AI_HORDE_BASE_DIR={{ ai_horde_base_dir }}
+          {{ local_garage_local_deploy_env }}
         dest: "{{ ai_horde_base_dir }}/local-deploy.env"
         mode: "0644"
 

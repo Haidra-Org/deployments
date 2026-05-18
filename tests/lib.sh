@@ -100,7 +100,7 @@ compose_down() {
   # fall back to a project-name-only invocation so orphan containers can
   # still be cleaned up after a partial / repeated teardown.
   local dc_ran=false
-  if type dc &>/dev/null && [ -f "${COMPOSE_DIR:-}/docker-compose.yml" ]; then
+  if type dc &>/dev/null && [ -f "${COMPOSE_DIR:-$root_dir}/docker-compose.yml" ]; then
     if dc down -v --remove-orphans; then
       dc_ran=true
     else
@@ -318,15 +318,16 @@ _patch_dockerfile() {
 }
 
 # ── Embedded Garage bootstrap ───────────────────────────────
-# These functions bootstrap an embedded Garage S3 store for the monitoring
-# stack.  They are shared by tests/monitoring/local_deploy.sh and
-# tests/full_stack/local_deploy.sh (--with-monitoring).
+# These functions bootstrap an embedded Garage S3 store for local-deploy
+# stacks. They are shared by monitoring and AI-Horde local-deploy scripts.
 #
 # Required env vars (loaded from local-deploy.env):
 #   GARAGE_S3_ACCESS_KEY_ID, GARAGE_S3_ACCESS_KEY_NAME,
 #   GARAGE_S3_SECRET_KEY_FILE, GARAGE_S3_ADMIN_PORT,
-#   GARAGE_S3_CAPACITY_BYTES, GARAGE_S3_BLOCKS_BUCKET,
-#   GARAGE_S3_RULER_BUCKET, GARAGE_S3_ALERTMANAGER_BUCKET
+#   GARAGE_S3_CAPACITY_BYTES
+# Bucket env vars are optional, but at least one should usually be set:
+#   GARAGE_S3_BLOCKS_BUCKET, GARAGE_S3_RULER_BUCKET,
+#   GARAGE_S3_ALERTMANAGER_BUCKET, GARAGE_S3_AIHORDE_BUCKET
 # Optional: GARAGE_S3_LOKI_BUCKET, GARAGE_S3_TEMPO_BUCKET,
 #   GARAGE_S3_PYROSCOPE_BUCKET, GARAGE_S3_ACCESS_KEY_SUFFIX_FILE
 
@@ -340,6 +341,7 @@ bootstrap_embedded_garage() {
   local node_id
   local garage_secret_key
   local output
+  local bucket_var bucket
   local -a garage_buckets
 
   if ! docker ps --format '{{.Names}}' | grep -qx 's3-store'; then
@@ -419,22 +421,23 @@ bootstrap_embedded_garage() {
     fi
   fi
 
-  garage_buckets=(
-    "$GARAGE_S3_BLOCKS_BUCKET"
-    "$GARAGE_S3_RULER_BUCKET"
-    "$GARAGE_S3_ALERTMANAGER_BUCKET"
-  )
-  if [[ -n "${GARAGE_S3_LOKI_BUCKET:-}" ]]; then
-    garage_buckets+=("$GARAGE_S3_LOKI_BUCKET")
-  fi
-  if [[ -n "${GARAGE_S3_TEMPO_BUCKET:-}" ]]; then
-    garage_buckets+=("$GARAGE_S3_TEMPO_BUCKET")
-  fi
-  if [[ -n "${GARAGE_S3_PYROSCOPE_BUCKET:-}" ]]; then
-    garage_buckets+=("$GARAGE_S3_PYROSCOPE_BUCKET")
-  fi
-  if [[ -n "${GARAGE_S3_AIHORDE_BUCKET:-}" ]]; then
-    garage_buckets+=("$GARAGE_S3_AIHORDE_BUCKET")
+  garage_buckets=()
+  for bucket_var in \
+    GARAGE_S3_BLOCKS_BUCKET \
+    GARAGE_S3_RULER_BUCKET \
+    GARAGE_S3_ALERTMANAGER_BUCKET \
+    GARAGE_S3_LOKI_BUCKET \
+    GARAGE_S3_TEMPO_BUCKET \
+    GARAGE_S3_PYROSCOPE_BUCKET \
+    GARAGE_S3_AIHORDE_BUCKET; do
+    bucket="${!bucket_var:-}"
+    if [[ -n "$bucket" ]]; then
+      garage_buckets+=("$bucket")
+    fi
+  done
+
+  if [[ ${#garage_buckets[@]} -eq 0 ]]; then
+    warn "No GARAGE_S3_*_BUCKET variables are set; skipping bucket bootstrap."
   fi
 
   for bucket in "${garage_buckets[@]}"; do

@@ -43,7 +43,11 @@ fi
 
 # Docker compose wrapper
 dc() {
-  docker compose -f "$LOCAL_ROOT/docker-compose.yml" "$@"
+  local args=(-f "$LOCAL_ROOT/docker-compose.yml")
+  if [ -f "$LOCAL_ROOT/docker-compose.garage.yml" ]; then
+    args+=(-f "$LOCAL_ROOT/docker-compose.garage.yml")
+  fi
+  docker compose "${args[@]}" "$@"
 }
 
 
@@ -85,6 +89,11 @@ compose_up() {
 
   log "Building AI-Horde Docker image (this may take a few minutes) ..."
   dc build
+
+  log "Starting local Garage for AI-Horde R2/source-image storage ..."
+  cleanup_known_container_name_conflicts ai-horde s3-store
+  dc up -d s3-store
+  bootstrap_embedded_garage
 
   log "Starting Docker Compose stack ..."
   dc up -d --scale aihorde="$INSTANCES"
