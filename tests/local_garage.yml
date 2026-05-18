@@ -32,13 +32,19 @@
     local_garage_rpc_secret_file: "{{ local_garage_secret_dir }}/rpc-secret"
     local_garage_admin_token_file: "{{ local_garage_secret_dir }}/admin-token"
 
-- name: Ensure local Garage directories exist
+- name: Ensure local Garage secret directory exists
+  ansible.builtin.file:
+    path: "{{ local_garage_secret_dir }}"
+    state: directory
+    mode: "0700"
+    owner: "{{ lookup('ansible.builtin.pipe', 'id -un') }}"
+
+- name: Ensure local Garage data directories exist
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     mode: "0700"
   loop:
-    - "{{ local_garage_secret_dir }}"
     - "{{ local_garage_config_dir }}"
     - "{{ local_garage_data_dir }}"
     - "{{ local_garage_metadata_dir }}"
