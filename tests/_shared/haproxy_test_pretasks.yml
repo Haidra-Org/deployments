@@ -1,6 +1,6 @@
 ---
 - name: Install HAProxy for config validation
-  ansible.builtin.apt:
+  ansible.builtin.package:
     name: haproxy
     state: present
     update_cache: true
