@@ -1,57 +1,98 @@
-FROM ubuntu:22.04
+ARG HORDE_TEST_BASE_IMAGE=ubuntu:22.04
+# hadolint ignore=DL3006
+FROM ${HORDE_TEST_BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV container=docker
+ARG HORDE_TEST_DISTRO=ubuntu
 ARG HORDE_TEST_ENABLE_DOCKER_DAEMON=0
 
-# Install systemd + Ansible deps and configure Docker apt repository.
-# Runtime daemon tests are opt-in via HORDE_TEST_ENABLE_DOCKER_DAEMON=1.
-RUN apt-get update && apt-get install -y \
-    systemd \
-    systemd-sysv \
-    python3 \
-    python3-apt \
-    python3-debian \
-    apt-transport-https \
-    gnupg2 \
-    sudo \
-    curl \
-    ca-certificates \
-    gnupg \
-    lsb-release \
-    git \
-    jq \
-    && install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-       | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
-    && chmod a+r /etc/apt/keyrings/docker.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-       https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-             > /etc/apt/sources.list.d/docker.list
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Default: CLI-only image for fast render tests.
-# Opt-in: install docker daemon + containerd for runtime tests that require
-# an in-container daemon (`tests/run_tests.sh --docker-daemon-tests`).
-RUN apt-get update \
-        && if [ "$HORDE_TEST_ENABLE_DOCKER_DAEMON" = "1" ]; then \
-                 apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin; \
-             else \
-                 apt-get install -y docker-ce-cli docker-compose-plugin; \
-             fi \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# hadolint ignore=DL3008,DL3041
+RUN set -eux; \
+        case "$HORDE_TEST_DISTRO" in \
+            ubuntu) \
+                apt-get update; \
+                apt-get install -y --no-install-recommends \
+                    systemd \
+                    systemd-sysv \
+                    python3 \
+                    python3-apt \
+                    python3-debian \
+                    apt-transport-https \
+                    gnupg2 \
+                    sudo \
+                    curl \
+                    ca-certificates \
+                    gnupg \
+                    lsb-release \
+                    git \
+                    jq; \
+                install -m 0755 -d /etc/apt/keyrings; \
+                curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+                    | gpg --dearmor -o /etc/apt/keyrings/docker.gpg; \
+                chmod a+r /etc/apt/keyrings/docker.gpg; \
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+                    > /etc/apt/sources.list.d/docker.list; \
+                apt-get update; \
+                if [ "$HORDE_TEST_ENABLE_DOCKER_DAEMON" = "1" ]; then \
+                    apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-compose-plugin; \
+                else \
+                    apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin; \
+                fi; \
+                apt-get clean; \
+                ;; \
+            fedora) \
+                dnf -y install \
+                    systemd \
+                    python3 \
+                    python3-dnf \
+                    python3-libselinux \
+                    sudo \
+                    curl \
+                    ca-certificates \
+                    gnupg2 \
+                    git \
+                    jq \
+                    shadow-utils \
+                    procps-ng \
+                    iproute \
+                    hostname \
+                    findutils \
+                    which; \
+                install -m 0755 -d /etc/yum.repos.d; \
+                curl -fsSL https://download.docker.com/linux/fedora/docker-ce.repo \
+                    -o /etc/yum.repos.d/docker-ce.repo; \
+                if [ "$HORDE_TEST_ENABLE_DOCKER_DAEMON" = "1" ]; then \
+                    dnf -y install docker-ce docker-ce-cli containerd.io docker-compose-plugin; \
+                else \
+                    dnf -y install docker-ce-cli docker-compose-plugin; \
+                fi; \
+                dnf clean all; \
+                ;; \
+            *) \
+                echo "Unsupported HORDE_TEST_DISTRO: ${HORDE_TEST_DISTRO}" >&2; \
+                exit 1; \
+                ;; \
+        esac
 
 # Remove unnecessary systemd units
-RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
-    /etc/systemd/system/*.wants/* \
-    /lib/systemd/system/local-fs.target.wants/* \
-    /lib/systemd/system/sockets.target.wants/*udev* \
-    /lib/systemd/system/sockets.target.wants/*initctl* \
-    /lib/systemd/system/sysinit.target.wants/systemd-tmpfiles-setup* \
-    /lib/systemd/system/systemd-update-utmp*
+RUN set -eux; \
+        for systemd_dir in /lib/systemd/system /usr/lib/systemd/system; do \
+            [ -d "$systemd_dir" ] || continue; \
+            rm -f \
+                "$systemd_dir"/multi-user.target.wants/* \
+                "$systemd_dir"/local-fs.target.wants/* \
+                "$systemd_dir"/sockets.target.wants/*udev* \
+                "$systemd_dir"/sockets.target.wants/*initctl* \
+                "$systemd_dir"/sysinit.target.wants/systemd-tmpfiles-setup* \
+                "$systemd_dir"/systemd-update-utmp*; \
+        done; \
+        rm -f /etc/systemd/system/*.wants/*
 
 # Create docker group (kept for compatibility with other tools that may expect it)
 RUN groupadd -f docker
 
 VOLUME ["/sys/fs/cgroup"]
-CMD ["/lib/systemd/systemd"]
+CMD ["/sbin/init"]

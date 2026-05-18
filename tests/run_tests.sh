@@ -10,6 +10,8 @@
 #   ./tests/run_tests.sh --list                       # list discoverable tests
 #   ./tests/run_tests.sh --jobs 4                     # run tests in parallel (max 4 concurrent)
 #   ./tests/run_tests.sh --jobs 3 monitoring          # parallel within a suite
+#   ./tests/run_tests.sh --distro fedora monitoring   # run container tests in a Fedora systemd image
+#   ./tests/run_tests.sh --base-image fedora:40 --distro fedora monitoring
 #   ./tests/run_tests.sh --docker-daemon-tests monitoring/test_runtime_services
 #                                                   # opt-in mode: build daemon-enabled
 #                                                   # container image for tests marked
@@ -34,6 +36,8 @@ TEMP_DOCKER_CONFIG=""
 LOG_DIR=""
 MAX_JOBS=1
 ENABLE_DOCKER_DAEMON_TESTS=0
+HORDE_TEST_DISTRO="${HORDE_TEST_DISTRO:-ubuntu}"
+HORDE_TEST_BASE_IMAGE="${HORDE_TEST_BASE_IMAGE:-}"
 
 export ANSIBLE_ROLES_PATH="$REPO_ROOT/roles"
 export ANSIBLE_HOST_KEY_CHECKING=False
@@ -241,14 +245,38 @@ configure_docker_cli() {
 }
 
 
+resolve_test_image_settings() {
+  case "$HORDE_TEST_DISTRO" in
+    ubuntu)
+      HORDE_TEST_BASE_IMAGE="${HORDE_TEST_BASE_IMAGE:-ubuntu:22.04}"
+      ;;
+    fedora)
+      HORDE_TEST_BASE_IMAGE="${HORDE_TEST_BASE_IMAGE:-fedora:40}"
+      ;;
+    *)
+      err "Unsupported test distro: ${HORDE_TEST_DISTRO} (expected: ubuntu or fedora)"
+      exit 1
+      ;;
+  esac
+
+  IMAGE_NAME="${IMAGE_NAME_BASE}-${HORDE_TEST_DISTRO}"
+  if [ "$ENABLE_DOCKER_DAEMON_TESTS" -eq 1 ]; then
+    IMAGE_NAME="${IMAGE_NAME}-dind"
+    log "Runtime daemon mode enabled: using daemon-capable image tag ${IMAGE_NAME}"
+  fi
+}
+
+
 build_image() {
   local docker_daemon_arg="0"
   if [ "$ENABLE_DOCKER_DAEMON_TESTS" -eq 1 ]; then
     docker_daemon_arg="1"
   fi
 
-  log "Building test image ${IMAGE_NAME} (docker-daemon=${docker_daemon_arg})..."
+  log "Building test image ${IMAGE_NAME} (${HORDE_TEST_DISTRO}, ${HORDE_TEST_BASE_IMAGE}, docker-daemon=${docker_daemon_arg})..."
   docker build \
+    --build-arg HORDE_TEST_BASE_IMAGE="$HORDE_TEST_BASE_IMAGE" \
+    --build-arg HORDE_TEST_DISTRO="$HORDE_TEST_DISTRO" \
     --build-arg HORDE_TEST_ENABLE_DOCKER_DAEMON="$docker_daemon_arg" \
     -t "$IMAGE_NAME" \
     -f "$SCRIPT_DIR/Dockerfile.systemd" \
@@ -528,6 +556,14 @@ main() {
         MAX_JOBS="${2:?--jobs requires a number}"
         shift 2
         ;;
+      --distro)
+        HORDE_TEST_DISTRO="${2:?--distro requires ubuntu or fedora}"
+        shift 2
+        ;;
+      --base-image)
+        HORDE_TEST_BASE_IMAGE="${2:?--base-image requires an image reference}"
+        shift 2
+        ;;
       --docker-daemon-tests)
         ENABLE_DOCKER_DAEMON_TESTS=1
         shift
@@ -539,10 +575,7 @@ main() {
     esac
   done
 
-  if [ "$ENABLE_DOCKER_DAEMON_TESTS" -eq 1 ]; then
-    IMAGE_NAME="${IMAGE_NAME_BASE}-dind"
-    log "Runtime daemon mode enabled: using daemon-capable image tag ${IMAGE_NAME}"
-  fi
+  resolve_test_image_settings
 
   trap cleanup EXIT
 

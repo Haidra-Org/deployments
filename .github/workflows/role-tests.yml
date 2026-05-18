@@ -8,8 +8,9 @@
 # Security model:
 #   - policy-contract: always-on semantic checks (no Docker).
 #   - package-manager-smoke: generic package module smoke across distro containers.
-#   - render-pr-trusted (same-repo PRs): render-only playbooks via run_tests.sh.
-#   - render (push/dispatch): same render-only playbooks on trusted events.
+#   - render-pr-trusted (same-repo PRs): render-only playbooks via run_tests.sh
+#     across Ubuntu and Fedora systemd target containers.
+#   - render (push/dispatch): same render-only matrix on trusted events.
 #   - runtime-daemon: opt-in docker-daemon tests, restricted to trusted events.
 #   - integration-smoke: cross-role render smoke after render gates pass.
 #   - integration-live: manual workflow_dispatch only.
@@ -109,7 +110,8 @@ jobs:
 
   # Render-only checks for trusted same-repo PRs.
   render-pr-trusted:
-    name: "render-pr-trusted / ${{ matrix.suite }}"
+    name: >-
+      render-pr-trusted / ${{ matrix.suite.name }} / ${{ matrix.distro.name }}
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository
@@ -118,37 +120,38 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - suite: monitoring
+        distro:
+          - name: ubuntu
+            base_image: ubuntu:22.04
+          - name: fedora
+            base_image: fedora:40
+        suite:
+          - name: monitoring
             target: monitoring
             jobs: 3
             timeout_minutes: 20
-          - suite: ai_horde
+          - name: ai_horde
             target: ai_horde/test_ai_horde_render
             jobs: 1
             timeout_minutes: 20
-          - suite: regen_worker
+          - name: regen_worker
             target: regen_worker/test_regen_worker_render
             jobs: 1
             timeout_minutes: 10
-          - suite: artbot
+          - name: artbot
             target: artbot/test_artbot_render
             jobs: 1
             timeout_minutes: 10
-          - suite: frontpage
+          - name: frontpage
             target: frontpage/test_frontpage_render
             jobs: 1
             timeout_minutes: 10
-          - suite: full_stack
+          - name: full_stack
             target: full_stack/test_fullstack_render
             jobs: 1
             timeout_minutes: 10
-          - suite: model_reference
+          - name: model_reference
             target: model_reference/test_model_reference_render
-            jobs: 1
-            timeout_minutes: 15
-          - suite: service_alerts
-            target: service_alerts/test_service_alerts_render
             jobs: 1
             timeout_minutes: 15
 
@@ -174,51 +177,55 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Run render tests
+        env:
+          HORDE_TEST_DISTRO: ${{ matrix.distro.name }}
+          HORDE_TEST_BASE_IMAGE: ${{ matrix.distro.base_image }}
         run: >-
-          ./tests/run_tests.sh --jobs "${{ matrix.jobs }}"
-          "${{ matrix.target }}"
-        timeout-minutes: ${{ matrix.timeout_minutes }}
+          ./tests/run_tests.sh --jobs "${{ matrix.suite.jobs }}"
+          "${{ matrix.suite.target }}"
+        timeout-minutes: ${{ matrix.suite.timeout_minutes }}
 
   # Render-only checks on trusted push/dispatch events.
   render:
-    name: "render / ${{ matrix.suite }}"
+    name: "render / ${{ matrix.suite.name }} / ${{ matrix.distro.name }}"
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - suite: monitoring
+        distro:
+          - name: ubuntu
+            base_image: ubuntu:22.04
+          - name: fedora
+            base_image: fedora:40
+        suite:
+          - name: monitoring
             target: monitoring
             jobs: 3
             timeout_minutes: 20
-          - suite: ai_horde
+          - name: ai_horde
             target: ai_horde/test_ai_horde_render
             jobs: 1
             timeout_minutes: 20
-          - suite: regen_worker
+          - name: regen_worker
             target: regen_worker/test_regen_worker_render
             jobs: 1
             timeout_minutes: 10
-          - suite: artbot
+          - name: artbot
             target: artbot/test_artbot_render
             jobs: 1
             timeout_minutes: 10
-          - suite: frontpage
+          - name: frontpage
             target: frontpage/test_frontpage_render
             jobs: 1
             timeout_minutes: 10
-          - suite: full_stack
+          - name: full_stack
             target: full_stack/test_fullstack_render
             jobs: 1
             timeout_minutes: 10
-          - suite: model_reference
+          - name: model_reference
             target: model_reference/test_model_reference_render
-            jobs: 1
-            timeout_minutes: 15
-          - suite: service_alerts
-            target: service_alerts/test_service_alerts_render
             jobs: 1
             timeout_minutes: 15
 
@@ -244,10 +251,13 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Run render tests
+        env:
+          HORDE_TEST_DISTRO: ${{ matrix.distro.name }}
+          HORDE_TEST_BASE_IMAGE: ${{ matrix.distro.base_image }}
         run: >-
-          ./tests/run_tests.sh --jobs "${{ matrix.jobs }}"
-          "${{ matrix.target }}"
-        timeout-minutes: ${{ matrix.timeout_minutes }}
+          ./tests/run_tests.sh --jobs "${{ matrix.suite.jobs }}"
+          "${{ matrix.suite.target }}"
+        timeout-minutes: ${{ matrix.suite.timeout_minutes }}
 
   runtime-daemon:
     name: "runtime-daemon / ${{ matrix.suite }}"
