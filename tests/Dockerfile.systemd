@@ -42,7 +42,6 @@ RUN set -eux; \
                     apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin; \
                 fi; \
                 apt-get clean; \
-                rm -rf /var/lib/apt/lists/*; \
                 ;; \
             fedora) \
                 dnf -y install \
@@ -71,7 +70,6 @@ RUN set -eux; \
                     dnf -y install docker-ce-cli docker-compose-plugin; \
                 fi; \
                 dnf clean all; \
-                rm -rf /var/cache/dnf; \
                 ;; \
             *) \
                 echo "Unsupported HORDE_TEST_DISTRO: ${HORDE_TEST_DISTRO}" >&2; \
