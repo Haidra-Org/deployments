@@ -91,11 +91,14 @@ AI_HORDE_PROFILING_DEPENDENCY_GROUP="telemetry-profiling"
 # file list are consistent across up / down / status / logs.
 
 dc_backend() {
-  docker compose \
-    -f "$LOCAL_ROOT/ai-horde/docker-compose.yml" \
-    -f "$STATIC_ROOT/ai-horde/docker-compose.network-overlay.yml" \
-    --project-name horde-aihorde \
-    "$@"
+  local args=(
+    -f "$LOCAL_ROOT/ai-horde/docker-compose.yml"
+    -f "$STATIC_ROOT/ai-horde/docker-compose.network-overlay.yml"
+  )
+  if [ "$WITH_MONITORING" != true ] && [ -f "$LOCAL_ROOT/ai-horde/docker-compose.garage.yml" ]; then
+    args+=(-f "$LOCAL_ROOT/ai-horde/docker-compose.garage.yml")
+  fi
+  docker compose "${args[@]}" --project-name horde-aihorde "$@"
 }
 
 dc_frontpage() {
@@ -207,7 +210,7 @@ check_fullstack_prerequisites() {
   check_prerequisites git ss
 
   # Port conflict detection
-  local core_ports=(80 8006 19810 8404 19800)
+  local core_ports=(80 3900 3903 8006 19810 8404 19800)
   for port in "${core_ports[@]}"; do
     if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
       err "Port $port is already in use."
@@ -692,6 +695,13 @@ cmd_up() {
   log "═══ Tier 1: AI-Horde Backend ═══"
   log "Building AI-Horde Docker image ..."
   dc_backend build
+  if [ "$WITH_MONITORING" != true ] && [ -f "$LOCAL_ROOT/ai-horde/docker-compose.garage.yml" ]; then
+    log "Starting local Garage for AI-Horde R2/source-image storage ..."
+    cleanup_known_container_name_conflicts horde-aihorde s3-store
+    load_env "$LOCAL_ROOT/ai-horde/local-deploy.env"
+    dc_backend up -d s3-store
+    bootstrap_embedded_garage
+  fi
   log "Starting AI-Horde backend ..."
   dc_backend up -d --scale aihorde="$INSTANCES"
   wait_for_url "http://127.0.0.1:7001/api/v2/status/heartbeat" "AI-Horde" 300 || {

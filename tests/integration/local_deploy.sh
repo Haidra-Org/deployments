@@ -56,7 +56,11 @@ fi
 
 # Docker compose wrapper for AI-Horde stack
 dc() {
-  docker compose -f "$AI_HORDE_DIR/docker-compose.yml" "$@"
+  local args=(-f "$AI_HORDE_DIR/docker-compose.yml")
+  if [ -f "$AI_HORDE_DIR/docker-compose.garage.yml" ]; then
+    args+=(-f "$AI_HORDE_DIR/docker-compose.garage.yml")
+  fi
+  docker compose "${args[@]}" "$@"
 }
 
 
@@ -110,6 +114,11 @@ start_aihorde() {
 
   log "Building AI-Horde Docker image ..."
   dc build
+
+  log "Starting local Garage for AI-Horde R2/source-image storage ..."
+  cleanup_known_container_name_conflicts ai-horde s3-store
+  dc up -d s3-store
+  bootstrap_embedded_garage
 
   log "Starting AI-Horde stack ..."
   dc up -d
@@ -364,6 +373,7 @@ main() {
       fi
       render_configs
       clone_source
+      load_env "$AI_HORDE_DIR/local-deploy.env"
       start_aihorde
       run_probe
       if [ "$WITH_WORKER" = true ]; then
