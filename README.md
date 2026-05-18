@@ -11,6 +11,7 @@ infrastructure, and supporting applications.
     - [Scope and Audience](#scope-and-audience)
         - [Non-goals](#non-goals)
     - [Usage](#usage)
+    - [Privilege Model](#privilege-model)
     - [Included Roles](#included-roles)
         - [Application Roles](#application-roles)
         - [Monitoring Roles](#monitoring-roles)
@@ -61,6 +62,26 @@ wget https://raw.githubusercontent.com/Haidra-Org/deployments/main/examples/requ
 ansible-galaxy collection install -r requirements.yml
 ```
 
+## Privilege Model
+
+Most roles in this collection are host-configuration roles. They create system
+users, write files under `/opt`, `/var/lib`, `/etc/systemd/system`, and
+`/etc/logrotate.d`, install packages, and in Docker-backed roles manage Compose
+projects through the host Docker daemon. Run deployment playbooks with
+`become: true` or an equivalent privileged remote account.
+
+That elevated access is for host bootstrap and service management, not for the
+application processes themselves. Roles should run long-lived services as
+dedicated unprivileged users or containers wherever the underlying service
+allows it, keep secrets in root-readable files when bind-mounted by Docker, and
+avoid granting service users sudo access unless a role documents a specific
+reason.
+
+The test harness follows the same model inside disposable containers. Container
+tests connect as `root` to privileged systemd test containers so Ansible can
+exercise package, systemd, ownership, and Docker-rendering behavior without
+depending on the user or UID running the tests on the control machine.
+
 ## Included Roles
 
 Each role provides its own README with full variable documentation and examples.
@@ -110,8 +131,10 @@ The collection ships a two-tier test suite under `tests/`.
 ### Render tests (fast, no services started)
 
 Validate Ansible template rendering, variable defaults, and negative
-(expected-failure) cases. Run entirely in check mode — no Docker daemon
-required for the test playbooks themselves.
+(expected-failure) cases. These tests run against disposable privileged systemd
+containers and write files inside those containers, but they do not start the
+rendered application services. A Docker daemon is not required inside the target
+container unless the playbook declares `# requires: docker-daemon`.
 
 ```bash
 # All render tests (builds a Docker systemd container per test):

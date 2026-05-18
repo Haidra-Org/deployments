@@ -43,6 +43,9 @@ tests.
   lines.
 - Prefer **render-only** tests (`start_services: false`) that assert file
   content, permissions, and template output.
+- Container tests run inside disposable privileged systemd containers and
+  connect as root so host-level role behavior is tested without depending on
+  the local or CI runner UID.
 - Use **runtime tests** only when behavior can't be proven by rendering.
 - See the [testing conventions](.github/instructions/ansible-role-testing.instructions.md)
   for the full guide.
