@@ -124,6 +124,57 @@ horde_model_reference_cache_hydration_interval_seconds: 240
 horde_model_reference_cache_hydration_stale_ttl_seconds: 3600
 horde_model_reference_cache_hydration_startup_delay_seconds: 5
 
+# ── GitHub sync service (PRIMARY only) ──────────────────────────────────────────
+# Runs scripts/sync/sync_github_references.py as a sidecar container in watch mode,
+# mirroring PRIMARY model-reference changes back to the legacy GitHub repos via PRs so
+# clients that still read GitHub stay in sync. Requires PRIMARY mode and GitHub auth.
+horde_model_reference_github_sync_enabled: false
+
+# Image for the sync sidecar. MUST include the `sync` extra (PyGithub/GitPython); the
+# published horde-model-reference image now bundles it, so reuse the API image by default.
+horde_model_reference_github_sync_image: "{{ horde_model_reference_image }}"
+
+# PRIMARY API base URL the sync reads from. MUST include the /api suffix. Default targets
+# the API container over the compose network (service name 'model-reference').
+horde_model_reference_github_sync_primary_api_url: "http://model-reference:19800/api"
+
+# Comma-separated categories to sync (empty = all categories).
+horde_model_reference_github_sync_categories: "image_generation,text_generation"
+
+# Watch mode (continuous polling) behaviour.
+horde_model_reference_github_sync_watch: true
+horde_model_reference_github_sync_watch_startup_sync: true
+horde_model_reference_github_sync_watch_interval_seconds: 60
+
+# Minimum number of changes required before a PR is opened.
+horde_model_reference_github_sync_min_changes_threshold: 1
+
+# PR presentation. Labels/reviewers are comma-separated.
+horde_model_reference_github_sync_pr_labels: "automated,sync,ready-for-review"
+horde_model_reference_github_sync_pr_reviewers: ""
+
+# Target GitHub repositories. Override the owner to point at a fork for safe testing
+# (the sync clones, pushes branches, and opens PRs against these repos).
+horde_model_reference_github_sync_image_repo_owner: "Haidra-Org"
+horde_model_reference_github_sync_image_repo_name: "AI-Horde-image-model-reference"
+horde_model_reference_github_sync_image_repo_branch: "main"
+horde_model_reference_github_sync_text_repo_owner: "Haidra-Org"
+horde_model_reference_github_sync_text_repo_name: "AI-Horde-text-model-reference"
+horde_model_reference_github_sync_text_repo_branch: "main"
+
+# ── GitHub authentication (choose ONE; required when sync is enabled) ────────────
+# Personal Access Token with Contents (R/W) + Pull Requests (R/W).
+horde_model_reference_github_sync_github_token: ""
+# GitHub App installation auth: app id + private-key PEM (installation id optional). The
+# PEM content is written to {{ base_dir }}/github-app-key.pem (0600, uid 1000) and mounted
+# read-only into the sidecar at /app/github-app-key.pem.
+# NOTE: the script uses installation auth (app id + PEM, installation id auto-discovered
+# from the target repo). A GitHub App client_id/client_secret are NOT usable here.
+horde_model_reference_github_app_id: ""
+# Optional: leave empty to auto-discover from the target repo owner.
+horde_model_reference_github_app_installation_id: ""
+horde_model_reference_github_app_private_key: ""
+
 # ── HAProxy conf.d integration ─────────────────────────────────────────────────
 # When true the role includes _haproxy_confd_bootstrap and drops a
 # frontend/backend fragment into /etc/haproxy/conf.d/.

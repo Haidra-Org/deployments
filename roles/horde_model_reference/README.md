@@ -64,6 +64,28 @@ frontend/backend fragment into `/etc/haproxy/conf.d/`.  The fragment routes
 requests to the configured `horde_model_reference_haproxy_hostnames` to the
 local service.
 
+## GitHub Sync (PRIMARY only)
+
+Set `horde_model_reference_github_sync_enabled: true` to run the GitHub sync service as a
+sidecar container (`scripts/sync/sync_github_references.py --watch`). It reads the PRIMARY
+v1 API and opens pull requests against the legacy GitHub repos so clients that still read
+GitHub stay in sync.
+
+Requirements:
+
+- **PRIMARY mode** (the role fails fast otherwise).
+- **GitHub auth** — either a PAT (`horde_model_reference_github_sync_github_token`) **or**
+  GitHub App installation auth (`horde_model_reference_github_app_id` +
+  `_github_app_private_key`; `_github_app_installation_id` is optional and
+  auto-discovered from the target repo when omitted). A GitHub App
+  `client_id`/`client_secret` are **not** usable by the sync script.
+- The sidecar reuses the API image, which now bundles the `sync` extra
+  (PyGithub/GitPython). If you pin a custom image, ensure it includes that extra.
+
+For safe testing, point the sync at a fork by overriding
+`horde_model_reference_github_sync_image_repo_owner` (and the `_text_repo_owner`). The
+PRIMARY URL **must** include the `/api` suffix.
+
 ## Variable Reference
 
 | Variable | Default | Description |
@@ -115,6 +137,26 @@ local service.
 | `horde_model_reference_haproxy_enabled` | `false` | Enable HAProxy conf.d fragment |
 | `horde_model_reference_haproxy_hostnames` | `[models.aihorde.net, models.stablehorde.net]` | Routed hostnames |
 | `horde_model_reference_haproxy_frontend_port` | `80` | HAProxy frontend bind port |
+| `horde_model_reference_github_sync_enabled` | `false` | Run the GitHub sync sidecar (PRIMARY only) |
+| `horde_model_reference_github_sync_image` | `{{ horde_model_reference_image }}` | Sidecar image (must include the `sync` extra) |
+| `horde_model_reference_github_sync_primary_api_url` | `http://model-reference:19800/api` | PRIMARY v1 API URL the sync reads (must end in `/api`) |
+| `horde_model_reference_github_sync_categories` | `image_generation,text_generation` | Categories to sync (comma-separated; empty = all) |
+| `horde_model_reference_github_sync_watch` | `true` | Run in continuous watch mode |
+| `horde_model_reference_github_sync_watch_startup_sync` | `true` | Run one sync immediately on startup |
+| `horde_model_reference_github_sync_watch_interval_seconds` | `60` | Watch-mode poll interval |
+| `horde_model_reference_github_sync_min_changes_threshold` | `1` | Minimum changes before opening a PR |
+| `horde_model_reference_github_sync_pr_labels` | `automated,sync,ready-for-review` | PR labels (comma-separated) |
+| `horde_model_reference_github_sync_pr_reviewers` | `""` | PR reviewers (comma-separated) |
+| `horde_model_reference_github_sync_image_repo_owner` | `Haidra-Org` | Image repo owner (override for fork testing) |
+| `horde_model_reference_github_sync_image_repo_name` | `AI-Horde-image-model-reference` | Image repo name |
+| `horde_model_reference_github_sync_image_repo_branch` | `main` | Image repo base branch |
+| `horde_model_reference_github_sync_text_repo_owner` | `Haidra-Org` | Text repo owner (override for fork testing) |
+| `horde_model_reference_github_sync_text_repo_name` | `AI-Horde-text-model-reference` | Text repo name |
+| `horde_model_reference_github_sync_text_repo_branch` | `main` | Text repo base branch |
+| `horde_model_reference_github_sync_github_token` | `""` | GitHub PAT (Contents + PRs R/W) |
+| `horde_model_reference_github_app_id` | `""` | GitHub App ID (App auth) |
+| `horde_model_reference_github_app_installation_id` | `""` | GitHub App installation ID (App auth) |
+| `horde_model_reference_github_app_private_key` | `""` | GitHub App private key PEM (written to `github-app-key.pem`) |
 | `horde_model_reference_otel_sdk_disabled` | `"true"` | OTel SDK disabled flag |
 | `horde_model_reference_log_driver` | `journald` | Docker log driver |
 | `horde_model_reference_start_services` | `true` | Pull and start stack |

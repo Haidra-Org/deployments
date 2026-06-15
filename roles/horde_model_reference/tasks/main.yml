@@ -31,6 +31,33 @@
     - (horde_model_reference_workers | int) > 1
     - not (horde_model_reference_redis_enabled | bool)
 
+# ── GitHub sync guards ──────────────────────────────────────────────────────────
+
+- name: Validate GitHub sync prerequisites
+  when: horde_model_reference_github_sync_enabled | bool
+  block:
+    - name: Fail if GitHub sync is enabled outside PRIMARY mode
+      ansible.builtin.fail:
+        msg: >-
+          horde_model_reference_github_sync_enabled requires PRIMARY mode
+          (got replicate_mode='{{ horde_model_reference_replicate_mode }}').
+          The sync mirrors a PRIMARY's data back to GitHub.
+      when: horde_model_reference_replicate_mode | upper != 'PRIMARY'
+
+    - name: Fail if GitHub sync has no authentication configured
+      ansible.builtin.fail:
+        msg: >-
+          horde_model_reference_github_sync_enabled requires GitHub authentication:
+          set horde_model_reference_github_sync_github_token (PAT), or both
+          horde_model_reference_github_app_id and _github_app_private_key (GitHub App).
+          The installation id is optional (auto-discovered from the target repo).
+      when:
+        - (horde_model_reference_github_sync_github_token | string | length) == 0
+        - not (
+            (horde_model_reference_github_app_id | string | length) > 0 and
+            (horde_model_reference_github_app_private_key | string | length) > 0
+          )
+
 # ── Docker Compose deployment ─────────────────────────────────────────────────
 
 - name: Deploy horde-model-reference via Docker Compose

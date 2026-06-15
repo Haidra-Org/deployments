@@ -97,6 +97,49 @@ services:
 {% endif %}
 
 {% endif %}
+{% if horde_model_reference_github_sync_enabled | bool %}
+  github-sync:
+    image: {{ horde_model_reference_github_sync_image }}
+    restart: unless-stopped
+    command:
+      - /app/.venv/bin/python
+      - scripts/sync/sync_github_references.py
+{% if horde_model_reference_github_sync_watch | bool %}
+      - --watch
+{% if horde_model_reference_github_sync_watch_startup_sync | bool %}
+      - --watch-startup-sync
+{% endif %}
+{% endif %}
+{% if horde_model_reference_github_sync_categories | length > 0 %}
+      - --categories
+      - "{{ horde_model_reference_github_sync_categories }}"
+{% endif %}
+    labels:
+      horde.logs: "true"
+      horde.app: "horde-model-reference"
+      horde.component: "github-sync"
+    env_file:
+      - {{ horde_model_reference_base_dir }}/github-sync.env
+    volumes:
+      - {{ horde_model_reference_data_dir }}:/data
+{% if horde_model_reference_github_app_id | string | length > 0 %}
+      - {{ horde_model_reference_base_dir }}/github-app-key.pem:/app/github-app-key.pem:ro
+{% endif %}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      model-reference:
+        condition: service_healthy
+    networks:
+      - hmr_network
+    logging:
+      driver: {{ horde_model_reference_log_driver }}
+{% if horde_model_reference_log_driver == 'journald' %}
+      options:
+        tag: "horde-model-reference-github-sync"
+{% endif %}
+
+{% endif %}
 networks:
   hmr_network:
     driver: bridge

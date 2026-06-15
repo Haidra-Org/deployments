@@ -30,6 +30,32 @@
   become: true
   no_log: true
 
+# ── GitHub sync sidecar (PRIMARY only) ─────────────────────────────────────────
+- name: Render GitHub sync sidecar configuration
+  when: horde_model_reference_github_sync_enabled | bool
+  block:
+    - name: Template GitHub sync environment file
+      ansible.builtin.template:
+        src: github-sync.env.j2
+        dest: "{{ horde_model_reference_base_dir }}/github-sync.env"
+        owner: root
+        group: root
+        mode: "0600"
+      become: true
+      no_log: true
+
+    - name: Write GitHub App private key for sync sidecar
+      ansible.builtin.copy:
+        content: "{{ horde_model_reference_github_app_private_key }}"
+        dest: "{{ horde_model_reference_base_dir }}/github-app-key.pem"
+        # Readable by the in-container service user (uid 1000).
+        owner: "1000"
+        group: "1000"
+        mode: "0600"
+      become: true
+      no_log: true
+      when: horde_model_reference_github_app_private_key | string | length > 0
+
 - name: Template Docker Compose for horde-model-reference
   ansible.builtin.template:
     src: docker-compose.model-reference.yml.j2
