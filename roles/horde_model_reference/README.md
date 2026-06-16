@@ -76,8 +76,7 @@ Requirements:
 - **PRIMARY mode** (the role fails fast otherwise).
 - **GitHub auth** — either a PAT (`horde_model_reference_github_sync_github_token`) **or**
   GitHub App installation auth (`horde_model_reference_github_app_id` +
-  `_github_app_private_key`; `_github_app_installation_id` is optional and
-  auto-discovered from the target repo when omitted). A GitHub App
+  `_github_app_installation_id` + `_github_app_private_key`, all required). A GitHub App
   `client_id`/`client_secret` are **not** usable by the sync script.
 - The sidecar reuses the API image, which now bundles the `sync` extra
   (PyGithub/GitPython). If you pin a custom image, ensure it includes that extra.

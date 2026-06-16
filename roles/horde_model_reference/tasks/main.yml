@@ -48,13 +48,14 @@
       ansible.builtin.fail:
         msg: >-
           horde_model_reference_github_sync_enabled requires GitHub authentication:
-          set horde_model_reference_github_sync_github_token (PAT), or both
-          horde_model_reference_github_app_id and _github_app_private_key (GitHub App).
-          The installation id is optional (auto-discovered from the target repo).
+          set horde_model_reference_github_sync_github_token (PAT), or all of
+          horde_model_reference_github_app_id, _github_app_installation_id and
+          _github_app_private_key (GitHub App installation auth).
       when:
         - (horde_model_reference_github_sync_github_token | string | length) == 0
         - not (
             (horde_model_reference_github_app_id | string | length) > 0 and
+            (horde_model_reference_github_app_installation_id | string | length) > 0 and
             (horde_model_reference_github_app_private_key | string | length) > 0
           )
 

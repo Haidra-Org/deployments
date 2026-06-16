@@ -165,13 +165,11 @@ horde_model_reference_github_sync_text_repo_branch: "main"
 # ── GitHub authentication (choose ONE; required when sync is enabled) ────────────
 # Personal Access Token with Contents (R/W) + Pull Requests (R/W).
 horde_model_reference_github_sync_github_token: ""
-# GitHub App installation auth: app id + private-key PEM (installation id optional). The
-# PEM content is written to {{ base_dir }}/github-app-key.pem (0600, uid 1000) and mounted
-# read-only into the sidecar at /app/github-app-key.pem.
-# NOTE: the script uses installation auth (app id + PEM, installation id auto-discovered
-# from the target repo). A GitHub App client_id/client_secret are NOT usable here.
+# GitHub App installation auth: app id + installation id + private-key PEM (all required).
+# The PEM content is written to {{ base_dir }}/github-app-key.pem (0600, uid 1000) and
+# mounted read-only into the sidecar at /app/github-app-key.pem.
+# NOTE: a GitHub App client_id/client_secret are NOT usable here.
 horde_model_reference_github_app_id: ""
-# Optional: leave empty to auto-discover from the target repo owner.
 horde_model_reference_github_app_installation_id: ""
 horde_model_reference_github_app_private_key: ""
 
