@@ -9,6 +9,11 @@ services:
     image: {{ _image_ref }}
     container_name: {{ horde_service_alerts_container_name }}
     restart: unless-stopped
+{% if horde_service_alerts_embedded_postgres_enabled | bool %}
+    depends_on:
+      postgres:
+        condition: service_healthy
+{% endif %}
     labels:
       horde.logs: "true"
       horde.app: "ai-horde-service-alerts"
@@ -34,4 +39,84 @@ services:
 {% if horde_service_alerts_log_driver == 'journald' %}
       options:
         tag: "{{ horde_service_alerts_log_tag }}"
+{% endif %}
+{% if horde_service_alerts_embedded_postgres_enabled | bool %}
+
+  postgres:
+    image: {{ horde_service_alerts_postgres_image }}
+    container_name: {{ horde_service_alerts_postgres_container_name }}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "{{ horde_service_alerts_postgres_user }}"
+      POSTGRES_PASSWORD: "{{ horde_service_alerts_postgres_password }}"
+      POSTGRES_DB: "{{ horde_service_alerts_postgres_db }}"
+    volumes:
+{% if (horde_service_alerts_postgres_data_path | default('') | length) > 0 %}
+      # Operator-supplied host bind mount (guarded against well-known PG paths).
+      - "{{ horde_service_alerts_postgres_data_path }}:/var/lib/postgresql/data"
+{% else %}
+      # Dedicated, stack-namespaced Docker named volume — isolated from any
+      # system Postgres data directory by construction.
+      - "{{ horde_service_alerts_postgres_volume_name }}:/var/lib/postgresql/data"
+{% endif %}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "pg_isready -U {{ horde_service_alerts_postgres_user }} -d {{ horde_service_alerts_postgres_db }}"
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      horde.logs: "true"
+      horde.app: "ai-horde-service-alerts"
+      horde.component: "postgres"
+    logging:
+      driver: {{ horde_service_alerts_log_driver }}
+{% if horde_service_alerts_log_driver == 'journald' %}
+      options:
+        tag: "{{ horde_service_alerts_log_tag }}-postgres"
+{% endif %}
+{% endif %}
+{% if horde_service_alerts_prober_enabled | bool and (horde_service_alerts_prober_shared_secret | default('') | length) > 0 %}
+
+  prober:
+    image: {{ horde_service_alerts_prober_image }}
+    container_name: {{ horde_service_alerts_prober_container_name }}
+    restart: unless-stopped
+    depends_on:
+      service-alerts:
+        condition: service_healthy
+    environment:
+      HORDE_PROBER_AIHORDE_BASE_URL: "{{ horde_service_alerts_prober_aihorde_base_url }}"
+      HORDE_PROBER_ALERTS_BASE_URL: "http://service-alerts:{{ horde_service_alerts_port }}/api/v1"
+      HORDE_PROBER_PROBER_SHARED_SECRET: "{{ horde_service_alerts_prober_shared_secret }}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8081/healthz')"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
+      horde.logs: "true"
+      horde.app: "ai-horde-service-alerts"
+      horde.component: "prober"
+    logging:
+      driver: {{ horde_service_alerts_log_driver }}
+{% if horde_service_alerts_log_driver == 'journald' %}
+      options:
+        tag: "{{ horde_service_alerts_prober_log_tag }}"
+{% endif %}
+{% endif %}
+{% if horde_service_alerts_embedded_postgres_enabled | bool and (horde_service_alerts_postgres_data_path | default('') | length) == 0 %}
+
+volumes:
+  {{ horde_service_alerts_postgres_volume_name }}:
+    name: {{ horde_service_alerts_postgres_volume_name }}
 {% endif %}

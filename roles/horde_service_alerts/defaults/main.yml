@@ -28,9 +28,6 @@ horde_service_alerts_port: 19810
 horde_service_alerts_alertmanager_base_url: "http://host.docker.internal:9093"
 horde_service_alerts_mimir_base_url: "http://host.docker.internal:9009"
 horde_service_alerts_mimir_tenant_default: "infrastructure"
-# Mapping of component name -> PromQL instant query (rendered as JSON).
-# Used by /api/v1/public/status to compute coarse component health badges.
-horde_service_alerts_mimir_curated_queries: {}
 
 # Optional HTTP basic auth presented by the service-alerts client when calling
 # upstream Alertmanager + Mimir. Required when reaching them through the
@@ -47,16 +44,63 @@ horde_service_alerts_moderator_cache_ttl_seconds: 60
 horde_service_alerts_moderator_cache_negative_ttl_seconds: 15
 horde_service_alerts_moderator_cache_max_entries: 1024
 
-# ── Public projection allowlists ────────────────────────────────────────────
-# Label / annotation keys retained when alerts are projected to the
-# unauthenticated /api/v1/public/* responses.
-horde_service_alerts_public_alert_label_allowlist:
-  - "alertname"
-  - "severity"
-  - "component"
-  - "service"
-horde_service_alerts_public_annotation_allowlist:
-  - "summary"
+# ── Status-page database (embedded Postgres sidecar) ─────────────────────────
+horde_service_alerts_enable_db: true
+horde_service_alerts_embedded_postgres_enabled: true
+horde_service_alerts_postgres_image: "postgres:16-alpine"
+horde_service_alerts_postgres_container_name: "horde-service-alerts-postgres"
+horde_service_alerts_postgres_user: "horde_status"
+horde_service_alerts_postgres_db: "horde_status"
+# No default password: operators MUST supply one (ops sources it from vault).
+# tasks/main.yml fails fast when embedded Postgres is enabled without a password.
+horde_service_alerts_postgres_password: ""
+
+# On-host data location for the embedded Postgres.
+#   EMPTY (default) -> a dedicated, stack-namespaced Docker NAMED VOLUME
+#     (horde_service_alerts_postgres_volume_name). Docker stores it under its
+#     own volumes dir, so it can never collide with a system Postgres data
+#     directory.
+#   A host path -> bind-mounted instead. It MUST NOT be a well-known Postgres
+#     data path; tasks/main.yml enforces this against the denylist below.
+horde_service_alerts_postgres_data_path: ""
+horde_service_alerts_postgres_volume_name: "horde-service-alerts-pgdata"
+# Well-known / system Postgres data paths the embedded sidecar must never reuse
+# for a host bind mount (defends against clobbering a real Postgres install).
+horde_service_alerts_postgres_forbidden_data_paths:
+  - "/var/lib/postgresql"
+  - "/var/lib/postgresql/data"
+  - "/var/lib/pgsql"
+  - "/var/lib/pgsql/data"
+  - "/pgdata"
+  - "/data/postgres"
+  - "/srv/postgresql"
+
+# SQLAlchemy URL the app connects with. Defaults to the embedded sidecar
+# (reachable as the compose service name `postgres`). External-DB deployments
+# override this (and typically set embedded_postgres_enabled=false).
+horde_service_alerts_database_url: >-
+  postgresql+asyncpg://{{ horde_service_alerts_postgres_user }}:{{ horde_service_alerts_postgres_password }}@postgres:5432/{{ horde_service_alerts_postgres_db }}
+
+# ── Status evaluator / maintenance / backfill / tuning ───────────────────────
+horde_service_alerts_enable_background_tasks: true
+horde_service_alerts_status_evaluator_interval_seconds: 15
+horde_service_alerts_maintenance_runner_interval_seconds: 30
+horde_service_alerts_no_signal_grace_seconds: 900
+# Run the one-shot Mimir backfill at startup. Set true once after first deploy,
+# then back to false on the next converge.
+horde_service_alerts_backfill_on_startup: false
+horde_service_alerts_backfill_window_days: 90
+
+# ── Co-located blackbox prober ───────────────────────────────────────────────
+horde_service_alerts_prober_enabled: true
+horde_service_alerts_prober_image: "ghcr.io/haidra-org/horde-status-prober:main"
+horde_service_alerts_prober_container_name: "horde-status-prober"
+horde_service_alerts_prober_log_tag: "horde-status-prober"
+horde_service_alerts_prober_aihorde_base_url: "https://aihorde.net/api"
+# Shared secret the prober presents on POST /internal/probe-results and the
+# service validates. EMPTY disables BOTH probe ingestion (service side) and the
+# prober container (no point running it). ops sources this from vault.
+horde_service_alerts_prober_shared_secret: ""
 
 # ── HTTP behaviour ──────────────────────────────────────────────────────────
 horde_service_alerts_request_timeout_seconds: 5.0
