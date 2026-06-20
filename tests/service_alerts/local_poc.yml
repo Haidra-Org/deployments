@@ -1,0 +1,32 @@
+---
+# Render the service-alerts local PoC stack (FastAPI service + embedded
+# Postgres + co-located prober) for end-to-end testing on this host.
+#
+# This is NOT a role test (the runner only discovers test_*.yml). It renders
+# config only — start the stack yourself with `docker compose up -d` against the
+# rendered base dir. See docs/service-alerts/local-poc.md for the full runbook.
+#
+# Override any var with `-e key=value`, e.g. `-e sa_poc_image=ghcr.io/...:main`.
+
+- name: Render service-alerts local PoC stack
+  hosts: localhost
+  connection: local
+  become: true
+  vars:
+    horde_service_alerts_start_services: false
+    horde_service_alerts_base_dir: "{{ sa_poc_base_dir | default('/tmp/service-alerts-poc') }}"
+    horde_service_alerts_image: "{{ sa_poc_image | default('ai-horde-service-alerts:local') }}"
+    horde_service_alerts_prober_image: "{{ sa_poc_prober_image | default('horde-status-prober:local') }}"
+    # Dev-only secrets — fine for a throwaway local stack, never for production.
+    horde_service_alerts_postgres_password: "{{ sa_poc_pg_password | default('localdev-pg-pw') }}"
+    horde_service_alerts_prober_shared_secret: "{{ sa_poc_prober_secret | default('localdev-prober-secret') }}"
+    horde_service_alerts_log_driver: "local"
+  roles:
+    - horde_service_alerts
+
+  post_tasks:
+    - name: Report rendered stack location
+      ansible.builtin.debug:
+        msg: >-
+          Rendered to {{ horde_service_alerts_base_dir }}. Bring it up with:
+          docker compose -f {{ horde_service_alerts_base_dir }}/docker-compose.yml up -d
