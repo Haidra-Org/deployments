@@ -15,6 +15,12 @@
   vars:
     horde_service_alerts_start_services: true
     horde_service_alerts_base_dir: /opt/horde-service-alerts-integration
+    # DB-less boot smoke: no embedded Postgres, no prober, no migrations — just
+    # prove the container comes up, /healthz is green, and routes are wired.
+    # The full DB path is covered by the pytest suite and docs/service-alerts/local-poc.md.
+    horde_service_alerts_enable_db: false
+    horde_service_alerts_embedded_postgres_enabled: false
+    horde_service_alerts_prober_enabled: false
     # Use unrouted addresses so upstream calls fail fast; /healthz must
     # remain green regardless of upstream reachability.
     horde_service_alerts_alertmanager_base_url: "http://127.0.0.1:65431"
@@ -38,14 +44,14 @@
         fail_msg: >-
           /healthz must return status=ok. Got: {{ _healthz.json }}
 
-    - name: Assert public status endpoint responds
+    - name: Assert public components endpoint responds
       ansible.builtin.uri:
-        url: "http://127.0.0.1:19810/api/v1/public/status"
+        url: "http://127.0.0.1:19810/api/v1/public/components"
         method: GET
-        # Upstream Alertmanager is intentionally unreachable, so a 5xx is
-        # acceptable here; we only care that the route is wired.
-        status_code: [200, 502, 503, 504]
-      register: _public_status
+        # DB-less here, so the DB-backed route returns 503; we only care the
+        # route is wired (200 once a DB is attached, 503 without one).
+        status_code: [200, 503]
+      register: _public_components
 
     - name: Assert internal route requires authentication
       ansible.builtin.uri:

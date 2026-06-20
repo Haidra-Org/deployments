@@ -95,6 +95,10 @@
     horde_service_alerts_listen: "127.0.0.1"
     horde_service_alerts_port: 19810
     horde_service_alerts_log_driver: "local"
+    # Dev-only secrets for the local stack (embedded Postgres + prober are on
+    # by default). Never use these values outside local-deploy.
+    horde_service_alerts_postgres_password: "localdev-pg-pw"
+    horde_service_alerts_prober_shared_secret: "localdev-prober-secret"
     # In local-deploy, monitoring runs as sibling containers attached to the
     # shared `horde-stack` network.  Override the upstream URLs so the
     # service-alerts container reaches them by service name (and only when

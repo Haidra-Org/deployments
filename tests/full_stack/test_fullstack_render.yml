@@ -78,6 +78,10 @@
         name: horde_service_alerts
       vars:
         horde_service_alerts_start_services: false
+        # Dev-only secrets so the embedded Postgres + prober render (both on by
+        # default); render-only, never used to start anything.
+        horde_service_alerts_postgres_password: "fullstack-test-pg-pw"
+        horde_service_alerts_prober_shared_secret: "fullstack-test-prober-secret"
 
     - name: Render local Garage for full-stack AI-Horde R2/source-image storage
       ansible.builtin.import_tasks: ../local_garage.yml
