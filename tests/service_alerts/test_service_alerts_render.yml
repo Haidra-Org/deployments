@@ -15,8 +15,8 @@
   vars:
     horde_service_alerts_start_services: false
     horde_service_alerts_base_dir: /opt/horde-service-alerts-default
-    horde_service_alerts_mimir_curated_queries:
-      api_up: 'up{job="ai-horde"}'
+    horde_service_alerts_postgres_password: "test-pg-password"
+    horde_service_alerts_prober_shared_secret: "test-prober-secret"
     horde_service_alerts_env_overrides:
       CUSTOM_VAR: "custom-value"
   roles:
@@ -51,6 +51,36 @@
           - "'host.docker.internal:host-gateway' in (_compose_content.content | b64decode)"
           - "'/healthz' in (_compose_content.content | b64decode)"
         fail_msg: "Compose missing expected service-alerts shape"
+
+    - name: Assert compose includes the embedded Postgres sidecar + named volume
+      ansible.builtin.assert:
+        that:
+          - "'postgres:' in (_compose_content.content | b64decode)"
+          - "'image: postgres:16-alpine' in (_compose_content.content | b64decode)"
+          - "'pg_isready' in (_compose_content.content | b64decode)"
+          - "'condition: service_healthy' in (_compose_content.content | b64decode)"
+          - "'horde-service-alerts-pgdata:/var/lib/postgresql/data' in (_compose_content.content | b64decode)"
+        fail_msg: "Compose missing the embedded Postgres sidecar or its named volume"
+
+    - name: Assert compose includes the co-located prober (secret is set)
+      ansible.builtin.assert:
+        that:
+          - "'container_name: horde-status-prober' in (_compose_content.content | b64decode)"
+          - "'HORDE_PROBER_ALERTS_BASE_URL' in (_compose_content.content | b64decode)"
+          - "'horde-status-prober:main' in (_compose_content.content | b64decode)"
+        fail_msg: "Compose missing the co-located prober container"
+
+    - name: Assert Postgres data never uses a well-known host path
+      ansible.builtin.assert:
+        that:
+          - "':/var/lib/postgresql/data' in (_compose_content.content | b64decode)"
+          # Only the IN-CONTAINER target may be /var/lib/postgresql/data; the
+          # HOST side must be the namespaced named volume, never a bind mount
+          # at a system Postgres directory.
+          - "'/var/lib/postgresql:/var/lib/postgresql/data' not in (_compose_content.content | b64decode)"
+          - "'/var/lib/postgresql/data:/var/lib/postgresql/data' not in (_compose_content.content | b64decode)"
+          - "'/var/lib/pgsql' not in (_compose_content.content | b64decode)"
+        fail_msg: "Compose binds Postgres data to a well-known host path"
 
     - name: Stat .env file
       ansible.builtin.stat:
@@ -100,21 +130,36 @@
         that:
           - "'HORDE_ALERTS_MODERATOR_CACHE_TTL_SECONDS=60' in (_env_content.content | b64decode)"
 
-    - name: Assert .env renders HORDE_ALERTS_PUBLIC_ALERT_LABEL_ALLOWLIST prefix
-      ansible.builtin.assert:
-        that:
-          - "'HORDE_ALERTS_PUBLIC_ALERT_LABEL_ALLOWLIST=' in (_env_content.content | b64decode)"
-
     - name: Assert .env renders HORDE_ALERTS_ENABLE_INTERNAL_SWAGGER_DOCS
       ansible.builtin.assert:
         that:
           - "'HORDE_ALERTS_ENABLE_INTERNAL_SWAGGER_DOCS=true' in (_env_content.content | b64decode)"
 
-    - name: Assert .env renders the curated query JSON
+    - name: Assert .env renders the database + evaluator settings
       ansible.builtin.assert:
         that:
-          - "'\"api_up\"' in (_env_content.content | b64decode)"
-          - "'up{job=' in (_env_content.content | b64decode)"
+          - "'HORDE_ALERTS_DATABASE_URL=postgresql+asyncpg://' in (_env_content.content | b64decode)"
+          - "'@postgres:5432/horde_status' in (_env_content.content | b64decode)"
+          - "'HORDE_ALERTS_ENABLE_DB=true' in (_env_content.content | b64decode)"
+          - "'HORDE_ALERTS_STATUS_EVALUATOR_INTERVAL_SECONDS=15' in (_env_content.content | b64decode)"
+          - "'HORDE_ALERTS_BACKFILL_ON_STARTUP=false' in (_env_content.content | b64decode)"
+        fail_msg: ".env missing database/evaluator settings"
+
+    - name: Assert .env renders the prober shared secret when set
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_PROBER_SHARED_SECRET=test-prober-secret' in (_env_content.content | b64decode)"
+        fail_msg: ".env must render HORDE_ALERTS_PROBER_SHARED_SECRET when the secret is set"
+
+    - name: Assert .env does NOT render removed (dead) settings
+      ansible.builtin.assert:
+        that:
+          - "'HORDE_ALERTS_MIMIR_CURATED_QUERIES' not in (_env_content.content | b64decode)"
+          - "'HORDE_ALERTS_PUBLIC_ALERT_LABEL_ALLOWLIST' not in (_env_content.content | b64decode)"
+          - "'HORDE_ALERTS_PUBLIC_ANNOTATION_ALLOWLIST' not in (_env_content.content | b64decode)"
+        fail_msg: >-
+          .env still renders settings the app rejects under extra="forbid"
+          (would crash the container at startup).
 
     - name: Assert .env renders env_overrides
       ansible.builtin.assert:
@@ -135,6 +180,7 @@
   vars:
     horde_service_alerts_start_services: false
     horde_service_alerts_base_dir: /opt/horde-service-alerts-egress
+    horde_service_alerts_postgres_password: "test-pg-password"
     horde_service_alerts_alertmanager_base_url: "http://monitoring.example:9494"
     horde_service_alerts_mimir_base_url: "http://monitoring.example:9494"
     horde_service_alerts_upstream_basic_auth_user: "service-alerts"
@@ -253,6 +299,7 @@
   vars:
     horde_service_alerts_start_services: false
     horde_service_alerts_base_dir: /opt/horde-service-alerts-haproxy
+    horde_service_alerts_postgres_password: "test-pg-password"
     horde_service_alerts_configure_haproxy_backend: true
     horde_service_alerts_haproxy_public_path_prefix: "/api/service-alerts/"
 
@@ -319,6 +366,7 @@
   vars:
     horde_service_alerts_start_services: false
     horde_service_alerts_base_dir: /opt/horde-service-alerts-pinned
+    horde_service_alerts_postgres_password: "test-pg-password"
     horde_service_alerts_image: "ghcr.io/haidra-org/ai-horde-service-alerts:v0.1.0"
     horde_service_alerts_image_digest: "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
   roles:
@@ -384,3 +432,85 @@
             fail_msg: >-
               Role rendered docker-compose.yml before failing on the
               digest guard — guard must run before template tasks.
+
+
+# ----------------------------------------------------------------------------
+# Fail-fast: embedded Postgres without a password must be rejected — never
+# start a database with an empty password.
+# ----------------------------------------------------------------------------
+- name: Test horde_service_alerts fail-fast (embedded Postgres without password)
+  hosts: testhost
+  become: true
+  vars:
+    horde_service_alerts_start_services: false
+    horde_service_alerts_base_dir: /opt/horde-service-alerts-nopw
+    horde_service_alerts_embedded_postgres_enabled: true
+    horde_service_alerts_postgres_password: ""
+  tasks:
+    - name: Expect role to fail on missing Postgres password
+      block:
+        - name: Apply role (should fail at the password guard)
+          ansible.builtin.include_role:
+            name: horde_service_alerts
+
+        - name: Force failure if role accepted an empty password
+          ansible.builtin.fail:
+            msg: "Role accepted embedded Postgres with an empty password"
+      rescue:
+        - name: Assert failure came from the password guard
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.msg is defined
+              - ansible_failed_result.msg is search('postgres_password')
+            fail_msg: >-
+              Expected the embedded-Postgres password guard, got:
+              {{ ansible_failed_result.msg | default('(no message)') }}
+
+
+# ----------------------------------------------------------------------------
+# Data-path isolation (CRITICAL): the embedded Postgres host data path must
+# never be a well-known / system Postgres directory. The guard must reject it.
+# ----------------------------------------------------------------------------
+- name: Test horde_service_alerts fail-fast (well-known Postgres data path)
+  hosts: testhost
+  become: true
+  vars:
+    horde_service_alerts_start_services: false
+    horde_service_alerts_base_dir: /opt/horde-service-alerts-badpgpath
+    horde_service_alerts_embedded_postgres_enabled: true
+    horde_service_alerts_postgres_password: "test-pg-password"
+    # A subdirectory of a system Postgres tree — must be rejected.
+    horde_service_alerts_postgres_data_path: "/var/lib/postgresql/data/horde"
+  tasks:
+    - name: Expect role to fail on a well-known Postgres data path
+      block:
+        - name: Apply role (should fail at the data-path guard)
+          ansible.builtin.include_role:
+            name: horde_service_alerts
+
+        - name: Force failure if role accepted a well-known data path
+          ansible.builtin.fail:
+            msg: "Role accepted a well-known Postgres data path for the embedded sidecar"
+      rescue:
+        - name: Assert failure came from the data-path guard
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.msg is defined
+              - ansible_failed_result.msg is search('postgres_data_path')
+                or ansible_failed_result.msg is search('well-known')
+            fail_msg: >-
+              Expected the Postgres data-path isolation guard, got:
+              {{ ansible_failed_result.msg | default('(no message)') }}
+
+        - name: Confirm no compose rendered before the data-path fail-fast
+          ansible.builtin.stat:
+            path: /opt/horde-service-alerts-badpgpath/docker-compose.yml
+          register: _badpgpath_compose
+
+        - name: Assert data-path guard runs before any template task
+          ansible.builtin.assert:
+            that:
+              - not _badpgpath_compose.stat.exists
+            fail_msg: >-
+              Role rendered docker-compose.yml before failing on the
+              data-path guard — guard must run before template tasks.

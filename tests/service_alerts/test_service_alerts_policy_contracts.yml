@@ -106,3 +106,58 @@
           tasks/main.yml must fail-fast on malformed
           horde_service_alerts_image_digest values via the canonical
           ^sha256:[0-9a-f]{64}$ regex.
+
+    # ── Embedded-Postgres data isolation (CRITICAL) ──────────────────────────
+    - name: Assert embedded Postgres password defaults to empty (opt-in, vault-sourced)
+      ansible.builtin.assert:
+        that:
+          - "'horde_service_alerts_postgres_password' in _defaults"
+          - _defaults.horde_service_alerts_postgres_password == ""
+        fail_msg: >-
+          horde_service_alerts_postgres_password must default to "" so the role
+          never ships a placeholder DB credential; operators source it from vault.
+
+    - name: Assert Postgres data path defaults to the isolated named volume
+      ansible.builtin.assert:
+        that:
+          # Empty data path => dedicated Docker named volume (no host collision).
+          - _defaults.horde_service_alerts_postgres_data_path == ""
+          - _defaults.horde_service_alerts_postgres_volume_name is string
+          - _defaults.horde_service_alerts_postgres_volume_name is match('^horde-service-alerts')
+        fail_msg: >-
+          By default the embedded Postgres must use a stack-namespaced Docker
+          named volume, not a host path.
+
+    - name: Assert the forbidden-path denylist covers well-known Postgres dirs
+      ansible.builtin.assert:
+        that:
+          - _defaults.horde_service_alerts_postgres_forbidden_data_paths is iterable
+          - "'/var/lib/postgresql' in _defaults.horde_service_alerts_postgres_forbidden_data_paths"
+          - "'/var/lib/postgresql/data' in _defaults.horde_service_alerts_postgres_forbidden_data_paths"
+          - "'/var/lib/pgsql' in _defaults.horde_service_alerts_postgres_forbidden_data_paths"
+        fail_msg: >-
+          horde_service_alerts_postgres_forbidden_data_paths must include the
+          common system Postgres data directories.
+
+    - name: Assert tasks/main.yml enforces the data-path denylist guard
+      ansible.builtin.assert:
+        that:
+          - "'horde_service_alerts_postgres_data_path' in _tasks"
+          - "'horde_service_alerts_postgres_forbidden_data_paths' in _tasks"
+        fail_msg: >-
+          tasks/main.yml must reject a horde_service_alerts_postgres_data_path
+          that is (or lives under) a well-known Postgres directory.
+
+    - name: Assert compose template never hardcodes a well-known host PG data path
+      ansible.builtin.assert:
+        that:
+          # The only legitimate occurrence of /var/lib/postgresql/data is the
+          # in-container target on the right side of a volume mapping.
+          - "'/var/lib/postgresql:/var/lib/postgresql/data' not in _compose_tpl"
+          - "'/var/lib/postgresql/data:/var/lib/postgresql/data' not in _compose_tpl"
+          - "'/var/lib/pgsql' not in _compose_tpl"
+          - "'horde_service_alerts_postgres_volume_name' in _compose_tpl"
+        fail_msg: >-
+          docker-compose.service-alerts.yml.j2 must mount Postgres data via the
+          namespaced named volume (or guarded data path), never a hardcoded
+          system Postgres directory.

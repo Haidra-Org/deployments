@@ -1,26 +1,33 @@
 # horde_service_alerts
 
-Deploys the **AI Horde service-alerts** FastAPI middleman as a Docker
-Compose stack and (optionally) wires it into the host's HAProxy via
-`/etc/haproxy/conf.d/`.
+Deploys the **AI Horde service-alerts** status-page backend as a Docker
+Compose stack — the FastAPI service, an embedded Postgres sidecar, and a
+co-located blackbox prober — and (optionally) wires the service into the
+host's HAProxy via `/etc/haproxy/conf.d/`.
 
 ## Purpose
 
-The service-alerts middleman keeps the monitoring stack (Alertmanager + Mimir)
-isolated from the public internet by exposing two narrow API surfaces:
+The service-alerts backend computes and serves public component status while
+keeping the monitoring stack (Alertmanager + Mimir) isolated from the public
+internet. It persists component status history, incidents, and maintenance
+windows in Postgres, and an in-process evaluator derives each component's
+status from the worst of: the latest blackbox probe, curated Alertmanager
+alerts, operator overrides, and active maintenance windows.
 
-- **Public, unauthenticated** (`/api/v1/public/*`) — coarse rolled-up status,
-  sanitized active-alert summaries, and aggregate silence counts.  All
-  responses pass through allowlist-based projection so internal labels such
-  as `instance`, `pod`, `__name__`, alert `description`, and `runbook_url`
-  never leave the host.
-- **Internal, moderator-only** (`/api/v1/internal/*`) — raw Alertmanager
-  alerts/silences/status and ad-hoc Mimir instant queries, gated by an
-  `apikey` request header validated against the AI Horde
+- **Public, unauthenticated** (`/api/v1/public/*`) — current component pills,
+  90-day uptime, incidents, and maintenance windows. Responses are
+  structural only; raw alert labels/annotations and operator prose never
+  reach this surface.
+- **Internal, moderator-only** (`/api/v1/internal/*`) — incident/maintenance/
+  override CRUD plus raw Alertmanager alerts/silences/status and ad-hoc Mimir
+  instant queries, gated by an `apikey` header validated against the AI Horde
   `GET /v2/find_user` endpoint (`moderator: true`).
+- **Probe ingestion** (`POST /api/v1/internal/probe-results`) — guarded by a
+  shared secret (`x-prober-secret`); the co-located prober pushes samples here.
 
-A health probe (`/healthz`) and a readiness probe (`/readyz`) are exposed
-without authentication for upstream load balancers.
+The container entrypoint runs `alembic upgrade head` against the database
+before starting. A health probe (`/healthz`) and a readiness probe
+(`/readyz`) are exposed without authentication for upstream load balancers.
 
 ## Deployment shape
 
@@ -33,6 +40,9 @@ without authentication for upstream load balancers.
 | Upstream Alertmanager | `http://host.docker.internal:9093`             |
 | Upstream Mimir       | `http://host.docker.internal:9009`              |
 | AI Horde verifier    | `https://aihorde.net/api/`                      |
+| Database             | embedded `postgres:16-alpine` sidecar           |
+| Postgres data        | dedicated Docker named volume `horde-service-alerts-pgdata` |
+| Prober               | co-located `ghcr.io/haidra-org/horde-status-prober:main` (when a shared secret is set) |
 
 The role expects the Docker host to provide `host.docker.internal` (the
 templates inject `extra_hosts: "host.docker.internal:host-gateway"`); this
@@ -48,14 +58,24 @@ is the same pattern used by the `ai_horde` and `aihorde_frontpage` roles.
 | `horde_service_alerts_listen` / `_port`                        | `127.0.0.1` / `19810`                                 | Bind for the published Docker port mapping.                                |
 | `horde_service_alerts_alertmanager_base_url`                   | `http://host.docker.internal:9093`                   | Alertmanager root.                                                         |
 | `horde_service_alerts_mimir_base_url`                          | `http://host.docker.internal:9009`                   | Mimir root (NOT `/prometheus`).                                            |
-| `horde_service_alerts_mimir_tenant_default`                    | `ai-horde-public`                                    | `X-Scope-OrgID` for curated public queries.                                |
-| `horde_service_alerts_mimir_curated_queries`                   | `{}`                                                 | `name -> PromQL` map driving `/api/v1/public/status` component badges.     |
+| `horde_service_alerts_mimir_tenant_default`                    | `infrastructure`                                     | `X-Scope-OrgID` for curated public queries.                                |
 | `horde_service_alerts_upstream_basic_auth_user` / `_password`  | `""` / `""`                                          | Client-side basic-auth pair sent by service-alerts to the monitoring egress frontend; should match `horde_monitoring_service_alerts_egress_auth_*`. |
 | `horde_service_alerts_aihorde_base_url`                        | `https://aihorde.net/api/`                           | Trailing `/` required.                                                     |
 | `horde_service_alerts_moderator_cache_ttl_seconds`             | `60`                                                 | Positive auth-cache TTL.                                                   |
 | `horde_service_alerts_moderator_cache_negative_ttl_seconds`    | `15`                                                 | Negative auth-cache TTL.                                                   |
-| `horde_service_alerts_public_alert_label_allowlist`            | `["alertname","severity","component","service"]`     | Labels retained on public projections.                                     |
-| `horde_service_alerts_public_annotation_allowlist`             | `["summary"]`                                        | Annotations retained on public projections.                                |
+| `horde_service_alerts_enable_db`                               | `true`                                               | Connect to Postgres on startup; entrypoint runs Alembic migrations.        |
+| `horde_service_alerts_database_url`                            | derived (embedded `postgres` service)                | SQLAlchemy async URL. Override for an external database.                   |
+| `horde_service_alerts_embedded_postgres_enabled`              | `true`                                               | Run the `postgres:16-alpine` sidecar in the stack.                         |
+| `horde_service_alerts_postgres_password`                      | `""`                                                 | **Required** when embedded PG is enabled (source from vault); guarded.     |
+| `horde_service_alerts_postgres_user` / `_db`                  | `horde_status` / `horde_status`                      | Embedded Postgres role + database name.                                    |
+| `horde_service_alerts_postgres_data_path`                     | `""`                                                 | Empty ⇒ isolated named volume. A host path must NOT be a well-known PG dir (guarded). |
+| `horde_service_alerts_postgres_volume_name`                   | `horde-service-alerts-pgdata`                         | Stack-namespaced Docker named volume for PG data.                          |
+| `horde_service_alerts_prober_enabled`                         | `true`                                               | Run the co-located prober (only when a shared secret is set).             |
+| `horde_service_alerts_prober_image`                          | `ghcr.io/haidra-org/horde-status-prober:main`        | Prober container image.                                                    |
+| `horde_service_alerts_prober_shared_secret`                  | `""`                                                 | Shared secret for probe push/ingest (source from vault). Empty disables both. |
+| `horde_service_alerts_status_evaluator_interval_seconds`     | `15`                                                 | Evaluator tick interval.                                                   |
+| `horde_service_alerts_no_signal_grace_seconds`              | `900`                                                | Grace before a no-signal component becomes `unknown`.                      |
+| `horde_service_alerts_backfill_on_startup`                  | `false`                                              | One-shot Mimir history backfill; enable once after first deploy.          |
 | `horde_service_alerts_request_timeout_seconds`                 | `5.0`                                                | Per-upstream HTTP timeout.                                                 |
 | `horde_service_alerts_cors_allow_origins`                      | `[]`                                                 | Blanks means no xsite allowed; ["*"] enables all. See https://fastapi.tiangolo.com/tutorial/cors/ for more info                                          |
 | `horde_service_alerts_enable_internal_swagger_docs`            | `true`                                               | Disables `/docs`, `/redoc`, `/openapi.json` when `false`.                  |

@@ -46,6 +46,36 @@
         alertmanager_base_url={{ horde_service_alerts_alertmanager_base_url | default('<unset>') }}
         mimir_base_url={{ horde_service_alerts_mimir_base_url | default('<unset>') }}
 
+- name: Validate embedded Postgres has a password
+  ansible.builtin.assert:
+    that:
+      - (horde_service_alerts_postgres_password | default('') | length) > 0
+    fail_msg: >-
+      horde_service_alerts_postgres_password must be set when
+      horde_service_alerts_embedded_postgres_enabled is true (source it from
+      ansible-vault). Refusing to start an embedded Postgres with an empty
+      password.
+  when: horde_service_alerts_embedded_postgres_enabled | bool
+
+- name: Validate embedded Postgres data path is not a well-known Postgres location
+  ansible.builtin.assert:
+    that:
+      # Empty == use the isolated named volume (safe). Otherwise the host path
+      # must not BE, or be a descendant of, any well-known Postgres directory.
+      # `select('in', path)` keeps forbidden bases that are a substring of the
+      # path, i.e. exact matches and parents — both are rejected.
+      - (horde_service_alerts_postgres_data_path | default('') | length == 0)
+        or (horde_service_alerts_postgres_forbidden_data_paths
+            | select('in', horde_service_alerts_postgres_data_path)
+            | list | length == 0)
+    fail_msg: >-
+      horde_service_alerts_postgres_data_path ('{{ horde_service_alerts_postgres_data_path | default('') }}')
+      is, or lives under, a well-known / system Postgres data directory
+      ({{ horde_service_alerts_postgres_forbidden_data_paths | join(', ') }}).
+      Use a dedicated, stack-namespaced path, or leave it empty to use the
+      isolated Docker named volume.
+  when: horde_service_alerts_embedded_postgres_enabled | bool
+
 - name: Deploy ai-horde-service-alerts via Docker Compose
   ansible.builtin.include_tasks: docker.yml
 
