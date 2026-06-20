@@ -135,3 +135,10 @@ that HAProxy boundary:
 
 There is no separate permission model behind the names; the distinction is
 only server-side credential definition versus client-side credential use.
+
+## Local PoC / end-to-end testing
+
+To bring the full stack (service + embedded Postgres + co-located prober) up on
+a single host and verify the probe → evaluator → public-API pipeline, follow
+[`docs/service-alerts/local-poc.md`](../../docs/service-alerts/local-poc.md).
+It uses the render-only helper `tests/service_alerts/local_poc.yml`.
