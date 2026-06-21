@@ -96,6 +96,10 @@ frontend service_alerts_egress_front
     acl authenticated http_auth(service_alerts_egress_auth)
     http-request auth realm service-alerts unless authenticated
     acl path_mimir path_beg /prometheus/
+    # Mimir's readiness endpoint lives at the root (/ready), not under
+    # /prometheus/. The service-alerts mimir client probes it for /readyz, so it
+    # must route to the Mimir backend or readiness 404s and /readyz returns 503.
+    acl path_mimir path /ready
     acl path_alertmanager path_beg /api/v2/ /-/
     use_backend horde_monitoring_mimir_backend if path_mimir
     use_backend horde_monitoring_alertmanager_backend if path_alertmanager
