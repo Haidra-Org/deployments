@@ -11,10 +11,11 @@
 #   ./tests/full_stack/local_deploy.sh up                    # core stack
 #   ./tests/full_stack/local_deploy.sh up --with-monitoring   # + monitoring
 #   ./tests/full_stack/local_deploy.sh up --with-worker       # + GPU worker
-#   ./tests/full_stack/local_deploy.sh up --latest            # follow default branches instead of pinned SHAs
+#   ./tests/full_stack/local_deploy.sh up --latest            # follow default branches + pull floating-tag images / rebuild exporter venv
 #   ./tests/full_stack/local_deploy.sh up --all               # everything
 #   ./tests/full_stack/local_deploy.sh up --local-ai-horde ../AI-Horde  # sync a local checkout; must support telemetry-profiling
 #   ./tests/full_stack/local_deploy.sh down
+#   ./tests/full_stack/local_deploy.sh reup service-alerts --latest  # recreate one tier, repulling its image
 #   ./tests/full_stack/local_deploy.sh status
 #   ./tests/full_stack/local_deploy.sh logs [service]
 # Risk category: deploy-safety, operational
@@ -41,7 +42,8 @@ INSTANCES=3
 declare -a ANSIBLE_EXTRA_VARS=()
 
 # Pinned refs for reproducible local deploys.
-# Use --latest (or set USE_LATEST_REFS=true in env) to follow branch heads.
+# Use --latest (or set USE_LATEST_REFS=true in env) to follow branch heads and
+# refresh image-based services (floating-tag pulls + stats-exporter venv rebuild).
 AI_HORDE_REPO_DEFAULT="https://github.com/Haidra-Org/AI-Horde.git"
 if [ -z "${AI_HORDE_REPO+x}" ]; then
   AI_HORDE_REPO="$AI_HORDE_REPO_DEFAULT"
@@ -162,6 +164,43 @@ dc_service_alerts() {
 }
 
 
+# refresh_images — make `--latest` advance image-based services, not just the
+# git source refs used by the build-from-source tiers.
+#
+# Two distinct problems are handled:
+#   1. Pre-built images on floating `:main` tags (horde-model-reference,
+#      ai-horde-service-alerts) are re-pulled. `--ignore-buildable` skips the
+#      tiers built locally from source (ai-horde / frontpage / artbot), whose
+#      freshness comes from the git ref + `dc_* build`.
+#   2. horde-exporter is NOT a published image — it pip-installs
+#      ai-horde-stats-exporter from `@main` into the persistent
+#      `horde-monitoring_exporter-venv` volume on first boot and then skips
+#      reinstall forever. Removing the volume (and the container holding it)
+#      forces a fresh install on the next `dc_monitoring up`, which is the only
+#      way to advance the exporter (e.g. to pick up a new release).
+#
+# Called from cmd_up after configs are rendered and before the tiers start.
+refresh_images() {
+  log "Refreshing images (--latest): pulling floating-tag images ..."
+  dc_backend pull --ignore-buildable 2>/dev/null || true
+  dc_frontpage pull --ignore-buildable 2>/dev/null || true
+  dc_model_reference pull 2>/dev/null || true
+  dc_service_alerts pull 2>/dev/null || true
+
+  if [ "$WITH_MONITORING" = true ]; then
+    dc_monitoring pull --ignore-buildable 2>/dev/null || true
+    log "Rebuilding stats-exporter venv so it reinstalls from @main ..."
+    # The container must be removed before its volume can be dropped.
+    docker rm -f horde-exporter 2>/dev/null || true
+    docker volume rm horde-monitoring_exporter-venv 2>/dev/null || true
+  fi
+
+  if [ "$WITH_ARTBOT" = true ]; then
+    dc_artbot pull --ignore-buildable 2>/dev/null || true
+  fi
+}
+
+
 # wire_aihorde_to_garage — write runtime/ai-horde/.env.garage with R2/AWS
 # vars pointing at the embedded Garage S3 endpoint, and recreate the
 # aihorde service so it picks up the new env_file. Idempotent.
@@ -206,20 +245,32 @@ EOF
 }
 
 
+# port_conflict PORT — true (0) only when PORT is bound by a process that is
+# NOT one of our running containers. A port held by a running container is one
+# `docker compose up` will reconcile in place, so re-running `up` on an already
+# running stack is idempotent rather than a hard "already in use" error.
+port_conflict() {
+  local port="$1"
+  ss -tlnp 2>/dev/null | grep -q ":${port} " || return 1   # free — no conflict
+  # Bound: if a running container publishes it, treat as reconcilable (ours).
+  [ -n "$(docker ps --filter "publish=${port}" --quiet 2>/dev/null)" ] && return 1
+  return 0
+}
+
 check_fullstack_prerequisites() {
   check_prerequisites git ss
 
   # Port conflict detection
   local core_ports=(80 3900 3903 8006 19810 8404 19800)
   for port in "${core_ports[@]}"; do
-    if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
-      err "Port $port is already in use."
+    if port_conflict "$port"; then
+      err "Port $port is already in use by a non-stack process."
       exit 1
     fi
   done
   for port in $(seq 7001 $((7001 + INSTANCES - 1))); do
-    if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
-      err "Port $port is already in use (AI-Horde instance)."
+    if port_conflict "$port"; then
+      err "Port $port is already in use by a non-stack process (AI-Horde instance)."
       exit 1
     fi
   done
@@ -227,8 +278,8 @@ check_fullstack_prerequisites() {
   if [ "$WITH_MONITORING" = true ]; then
     local mon_ports=(3000 9009 9090 9093)
     for port in "${mon_ports[@]}"; do
-      if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
-        err "Port $port is already in use (--with-monitoring)."
+      if port_conflict "$port"; then
+        err "Port $port is already in use by a non-stack process (--with-monitoring)."
         exit 1
       fi
     done
@@ -249,8 +300,8 @@ check_fullstack_prerequisites() {
   if [ "$WITH_ARTBOT" = true ]; then
     local artbot_ports=(8080 8484)
     for port in "${artbot_ports[@]}"; do
-      if ss -tlnp 2>/dev/null | grep -q ":${port} "; then
-        err "Port $port is already in use (--with-artbot)."
+      if port_conflict "$port"; then
+        err "Port $port is already in use by a non-stack process (--with-artbot)."
         exit 1
       fi
     done
@@ -691,6 +742,12 @@ cmd_up() {
   render_configs
   clone_sources
 
+  # With --latest, also advance image-based services (floating-tag pulls +
+  # stats-exporter venv rebuild), not just the git source refs handled above.
+  if [ "${USE_LATEST_REFS:-false}" = true ]; then
+    refresh_images
+  fi
+
   # Tier 1: Backend (AI-Horde + Postgres + Redis)
   log "═══ Tier 1: AI-Horde Backend ═══"
   log "Building AI-Horde Docker image ..."
@@ -799,6 +856,11 @@ cmd_up() {
     docker network connect horde-stack horde-exporter 2>/dev/null || true
     docker network connect horde-stack alloy 2>/dev/null || true
     docker network connect horde-stack pyroscope 2>/dev/null || true
+    # mimir + alertmanager join horde-stack so ai-horde-service-alerts (a
+    # separate compose project on horde-stack) can reach them by service name
+    # (http://mimir:9009, http://alertmanager:9093) per its rendered .env.
+    docker network connect horde-stack mimir 2>/dev/null || true
+    docker network connect horde-stack alertmanager 2>/dev/null || true
     # s3-store joins horde-stack so AI-Horde containers can reach Garage
     # by service name (http://s3-store:3900) for the R2-compatible
     # presigned-URL flow exercised by /api/v2/generate/pop+submit.
@@ -883,6 +945,16 @@ cmd_down() {
   dc_artbot down --remove-orphans 2>/dev/null || true
   dc_haproxy down --remove-orphans 2>/dev/null || true
   dc_monitoring down --remove-orphans 2>/dev/null || true
+  # service-alerts: compose down via our project, then ALWAYS force-remove the
+  # fixed container names. The horde_service_alerts Ansible role brings the
+  # stack up via `project_src` with no explicit project name (Compose uses the
+  # "service-alerts" directory name), whereas dc_service_alerts uses
+  # --project-name "horde-service-alerts". A compose `down` only removes its own
+  # project's containers, so the unconditional `docker rm -f` is what guarantees
+  # the containers die regardless of which project launched them.
+  dc_service_alerts down --remove-orphans 2>/dev/null || true
+  docker rm -f horde-service-alerts horde-service-alerts-postgres 2>/dev/null || true
+  docker network rm service-alerts_default horde-service-alerts_default 2>/dev/null || true
   dc_model_reference down --remove-orphans 2>/dev/null || true
   dc_frontpage down --remove-orphans 2>/dev/null || true
   dc_backend down --remove-orphans 2>/dev/null || true
@@ -905,6 +977,9 @@ cmd_status() {
   info "─── horde-model-reference ───"
   dc_model_reference ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  (not running)"
   echo ""
+  info "─── ai-horde-service-alerts ───"
+  dc_service_alerts ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  (not running)"
+  echo ""
   info "─── HAProxy ───"
   dc_haproxy ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  (not running)"
   echo ""
@@ -914,6 +989,84 @@ cmd_status() {
   info "─── Artbot ───"
   dc_artbot ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  (not running)"
   echo ""
+}
+
+
+# reup_project NAME DC_FN HEALTH_URL HEALTH_LABEL [extra up args...] —
+# force-recreate a single tier's compose project. With --latest, pull newer
+# images first; `--ignore-buildable` leaves the build-from-source tiers
+# (backend / frontpage / artbot) to their git-ref + `build` flow rather than
+# pulling a registry image over the locally-built one.
+reup_project() {
+  local name="$1" dc_fn="$2" health_url="$3" health_label="$4"
+  shift 4
+  log "Re-upping: $name ..."
+  if [ "${USE_LATEST_REFS:-false}" = true ]; then
+    log "  Pulling latest images for $name ..."
+    "$dc_fn" pull --ignore-buildable 2>/dev/null || true
+  fi
+  "$dc_fn" up -d --force-recreate "$@"
+  if [ -n "$health_url" ]; then
+    wait_for_url "$health_url" "$health_label" 120 \
+      || warn "$name did not become healthy — check logs with: $0 logs $name"
+  fi
+}
+
+
+# cmd_reup — recreate one or more tiers in place without tearing down the rest
+# of the stack. Respects --latest (repull image + recreate). Useful for picking
+# up a freshly-published image, e.g. `reup service-alerts --latest`.
+cmd_reup() {
+  if [ "$#" -eq 0 ]; then
+    err "reup requires at least one target."
+    echo "Usage: $0 reup <backend|frontpage|model-reference|service-alerts|haproxy|monitoring|artbot> [more...] [--latest]"
+    exit 1
+  fi
+
+  local target
+  for target in "$@"; do
+    case "$target" in
+      backend|aihorde)
+        reup_project "AI-Horde backend" dc_backend \
+          "http://127.0.0.1:7001/api/v2/status/heartbeat" "AI-Horde" \
+          --scale aihorde="$INSTANCES"
+        ;;
+      frontpage|frontend)
+        reup_project "AiHordeFrontpage" dc_frontpage \
+          "http://127.0.0.1:8006/" "Frontpage"
+        ;;
+      model-reference|models)
+        reup_project "horde-model-reference" dc_model_reference \
+          "http://127.0.0.1:19800/api/heartbeat" "horde-model-reference"
+        ;;
+      service-alerts|horde-status|alerts)
+        reup_project "ai-horde-service-alerts" dc_service_alerts \
+          "http://127.0.0.1:19810/healthz" "ai-horde-service-alerts"
+        ;;
+      haproxy)
+        reup_project "HAProxy" dc_haproxy "http://127.0.0.1:80/" "HAProxy"
+        ;;
+      monitoring)
+        if [ "${USE_LATEST_REFS:-false}" = true ]; then
+          # The stats exporter installs into a persistent volume and skips
+          # reinstall thereafter; drop it so the recreate reinstalls from @main.
+          log "Rebuilding stats-exporter venv so it reinstalls from @main ..."
+          docker rm -f horde-exporter 2>/dev/null || true
+          docker volume rm horde-monitoring_exporter-venv 2>/dev/null || true
+        fi
+        reup_project "Monitoring stack" dc_monitoring \
+          "http://127.0.0.1:${GRAFANA_PORT:-3000}/api/health" "Grafana"
+        ;;
+      artbot)
+        reup_project "Artbot" dc_artbot "http://127.0.0.1:8080/" "Artbot"
+        ;;
+      *)
+        warn "Unknown reup target: $target"
+        echo "Usage: $0 reup <backend|frontpage|model-reference|service-alerts|haproxy|monitoring|artbot> [more...] [--latest]"
+        exit 1
+        ;;
+    esac
+  done
 }
 
 
@@ -928,6 +1081,9 @@ cmd_logs() {
       ;;
     model-reference|models)
       dc_model_reference logs -f --tail=100
+      ;;
+    service-alerts|horde-status|alerts)
+      dc_service_alerts logs -f --tail=100
       ;;
     haproxy)
       dc_haproxy logs -f --tail=100
@@ -965,23 +1121,30 @@ print_banner() {
   log "═══════════════════════════════════════════════════════════"
   log "  Full Horde stack is running!"
   log "═══════════════════════════════════════════════════════════"
-  info "  Frontpage:     http://localhost/"
-  info "  API:           http://localhost/api/v2/status/heartbeat"
+  info "  Frontpage:      http://localhost/"
+  info "  API:            http://localhost/api/v2/status/heartbeat"
   if [ "$INSTANCES" -gt 1 ]; then
     local port_end=$(( 7001 + INSTANCES - 1 ))
-    info "  API (direct):  http://localhost:7001–${port_end}  (${INSTANCES} instances)"
+    info "  API (direct):   http://localhost:7001–${port_end}  (${INSTANCES} instances)"
   else
-    info "  API (direct):  http://localhost:7001/api/v2/status/heartbeat"
+    info "  API (direct):   http://localhost:7001/api/v2/status/heartbeat"
   fi
-  info "  Models API:    http://localhost:19800/api/heartbeat"
-  info "  HAProxy stats: http://localhost:8404/stats"
+  info "  Models API:     http://localhost:19800/api/heartbeat"
+  info "  Service alerts: http://localhost:19810/healthz"
+  info "  HAProxy stats:  http://localhost:8404/stats"
   if [ "$WITH_MONITORING" = true ]; then
-    info "  Grafana:       http://localhost:3000/"
-    info "  Prometheus:    http://localhost:9090/"
+    info "  Grafana:        http://localhost:${GRAFANA_PORT:-3000}/"
+    info "  Prometheus:     http://localhost:9090/"
+    info "  Alertmanager:   http://localhost:9093/"
+    info "  Mimir:          http://localhost:${MIMIR_PORT:-9009}/"
+    info "  Loki:           http://localhost:3100/"
+    info "  Tempo:          http://localhost:3200/"
+    info "  Pyroscope:      http://localhost:4040/"
+    info "  Stats exporter: http://localhost:9150/metrics"
   fi
   if [ "$WITH_ARTBOT" = true ]; then
-    info "  Artbot:        http://localhost:8080/"
-    info "  Artbot stats:  http://localhost:8484/stats"
+    info "  Artbot:         http://localhost:8080/"
+    info "  Artbot stats:   http://localhost:8484/stats"
   fi
   log "═══════════════════════════════════════════════════════════"
   echo ""
@@ -1062,6 +1225,9 @@ main() {
     down)
       cmd_down
       ;;
+    reup)
+      cmd_reup ${positional[@]+"${positional[@]}"}
+      ;;
     status)
       cmd_status
       ;;
@@ -1069,7 +1235,8 @@ main() {
       cmd_logs "${positional[0]:-}"
       ;;
     *)
-      echo "Usage: $0 {up|down|status|logs} [--with-monitoring] [--with-worker] [--with-artbot] [--latest] [--all] [--instances=N] [--local-ai-horde PATH] [--local-frontpage PATH] [-e key=value]"
+      echo "Usage: $0 {up|down|reup|status|logs} [--with-monitoring] [--with-worker] [--with-artbot] [--latest] [--all] [--instances=N] [--local-ai-horde PATH] [--local-frontpage PATH] [-e key=value]"
+      echo "       $0 reup <backend|frontpage|model-reference|service-alerts|haproxy|monitoring|artbot> [more...] [--latest]"
       echo "       --local-ai-horde PATH must point at a checkout whose Dockerfile supports AI_HORDE_DEPENDENCY_GROUPS and telemetry-profiling."
       exit 1
       ;;
