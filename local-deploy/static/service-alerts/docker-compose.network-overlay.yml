@@ -2,19 +2,29 @@
 # horde-stack network.  Used with:
 #   docker compose -f docker-compose.yml -f docker-compose.network-overlay.yml
 #
-# The alias `service-alerts` on horde-stack lets HAProxy resolve the
-# service by name (server service-alerts service-alerts:19810) via Docker's
-# embedded DNS without any external DNS dependency.
+# The alias `service-alerts` on horde-stack lets HAProxy (and other horde-stack
+# projects) resolve the app by name via Docker's embedded DNS, with no external
+# DNS dependency.
+#
+# IMPORTANT: only ADD horde-stack to the app — do NOT move any service onto a
+# private network. The base compose places ALL service-alerts services
+# (service-alerts, postgres, and the prober) on this project's implicit
+# `default` network, which is already isolated to this compose project. Listing
+# `networks:` on a service REPLACES its membership, so pulling only some services
+# onto a separate network orphans the rest — that is what previously broke
+# service-alerts -> postgres ("could not translate host name postgres") and
+# prober -> service-alerts ("Probe push failed ... Name or service not known").
+# Keeping every service on the project `default` network lets them resolve each
+# other by service name regardless of how many the role renders.
 services:
   service-alerts:
     networks:
-      service_alerts_network: {}
+      default: {}
       horde-stack:
         aliases:
           - service-alerts
 
 networks:
-  service_alerts_network:
-    driver: bridge
+  default: {}
   horde-stack:
     external: true
