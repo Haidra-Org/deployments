@@ -8,7 +8,79 @@
 {% if ai_horde_pyroscope_enabled | bool and ai_horde_pyroscope_dependency_group not in _build_dependency_groups %}
 {% set _build_dependency_groups = _build_dependency_groups + [ai_horde_pyroscope_dependency_group] %}
 {% endif %}
+{% set _host_net = ai_horde_host_network_enabled | default(false) | bool %}
 services:
+{% if _host_net %}
+{#- Host-network, per-port parity mode. One discrete service per published port,
+    each on the host network namespace so the app's hardcoded local L1 redis target
+    (127.0.0.1:6379, db6) resolves to the host's redis exactly as the incumbent
+    bare-metal processes do. The app binds ai_horde_listen (the host's internal
+    address) via --listen, mirroring the incumbent `server.py -p 700X --listen
+    <host>.internal`. No published ports or user-defined network: host mode owns the
+    host's interfaces directly. Scale is not used here; the port range is enumerated. #}
+{% for _p in range(ai_horde_port | int, (ai_horde_port | int) + (ai_horde_replicas | default(1) | int)) %}
+  aihorde-{{ _p }}:
+    container_name: aihorde-{{ _p }}
+{% if ai_horde_build_context | default('') | length > 0 %}
+    image: {{ ai_horde_image }}
+    build:
+      context: {{ ai_horde_build_context }}
+{% if ai_horde_build_dockerfile | default('') | length > 0 %}
+      dockerfile: {{ ai_horde_build_dockerfile }}
+{% endif %}
+{% if _build_dependency_groups | length > 0 %}
+      args:
+        AI_HORDE_DEPENDENCY_GROUPS: "{{ _build_dependency_groups | join(' ') }}"
+{% endif %}
+{% else %}
+    image: {{ ai_horde_image }}
+{% endif %}
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - python
+      - server.py
+      - "{{ ai_horde_verbosity }}"
+      - "--horde"
+      - "{{ ai_horde_horde_type }}"
+      - "-p"
+      - "{{ _p }}"
+      - "--listen"
+      - "{{ ai_horde_listen }}"
+      - "--waitress_threads"
+      - "{{ ai_horde_waitress_threads }}"
+      - "--waitress_connection_limit"
+      - "{{ ai_horde_waitress_connection_limit }}"
+    labels:
+      horde.logs: "true"
+      horde.app: "ai-horde"
+      horde.component: "backend"
+      horde.port: "{{ _p }}"
+    env_file:
+      - {{ ai_horde_base_dir }}/.env
+{% for extra in ai_horde_extra_env_files | default([]) %}
+      - path: {{ extra if extra.startswith('/') else (ai_horde_base_dir ~ '/' ~ extra) }}
+        required: false
+{% endfor %}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+{% for _eh in ai_horde_extra_hosts | default([]) %}
+      - "{{ _eh }}"
+{% endfor %}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://{{ ai_horde_listen }}:{{ _p }}/api/v2/status/heartbeat')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    logging:
+      driver: {{ ai_horde_log_driver }}
+{% if ai_horde_log_driver == 'journald' %}
+      options:
+        tag: "ai-horde-{{ _p }}"
+{% endif %}
+{% endfor %}
+{% else %}
   aihorde:
 {% if ai_horde_build_context | default('') | length > 0 %}
     image: {{ ai_horde_image }}
@@ -75,6 +147,7 @@ services:
       options:
         tag: "ai-horde"
 {% endif %}
+{% endif %}
 
 {% if ai_horde_embedded_postgres_enabled %}
   postgres:
@@ -132,6 +205,8 @@ services:
 {% endif %}
 {% endif %}
 
+{% if (not _host_net) or ai_horde_embedded_postgres_enabled or ai_horde_embedded_redis_enabled %}
 networks:
   aihorde_network:
     driver: bridge
+{% endif %}

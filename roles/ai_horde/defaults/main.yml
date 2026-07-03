@@ -37,6 +37,16 @@ ai_horde_redis_image: "redis:7-alpine@sha256:8b81dd37ff027bec4e516d41acfbe9fe246
 ai_horde_port: 7001
 ai_horde_listen: "127.0.0.1"
 
+# Host-network, per-port parity mode. When false (default), the app runs as a single
+# bridge-networked service with a published 7001-700N port range scaled to
+# ai_horde_replicas (dev/local-deploy/CI). When true, the role renders one discrete
+# host-network service per port (aihorde-7001..aihorde-700N), each binding
+# ai_horde_listen via `server.py -p <port> --listen`. Host networking is required for
+# production parity so the app's hardcoded local L1 redis (127.0.0.1:6379 db6) reaches
+# the host's redis; a bridge container's loopback cannot. Not compatible with `scale`
+# (the caller must not pass it in this mode) or with embedded datastores.
+ai_horde_host_network_enabled: false
+
 ai_horde_horde_type: "stable"
 ai_horde_verbosity: "-vvvvi"
 
