@@ -84,9 +84,24 @@ ai_horde_postgres_db: "aihorde"
 ai_horde_redis_host: "redis"
 ai_horde_redis_port: 6379
 
+# Redis servers the app fans WRITES out to for transparent failover, the app's
+# REDIS_SERVERS (horde/redis_ctrl.get_all_redis_db_servers). Reads always come from
+# ai_horde_redis_host (REDIS_IP); every reachable entry here also receives writes.
+# Leave empty to derive a single-element list of [ai_horde_redis_host]. Set an
+# explicit ordered list to mirror a multi-node incumbent (e.g. passive + active).
+ai_horde_redis_servers: []
+
 ai_horde_admins: []
 # Extra env vars merged into .env (e.g. R2, OAuth keys).
 ai_horde_env_overrides: {}
+
+# Additional docker-compose extra_hosts entries ("name:ip") injected into the app
+# container's /etc/hosts, on top of the always-present host.docker.internal mapping.
+# Needed when the app must reach datastores addressed by names the host resolves via
+# /etc/hosts (not DNS). A bridge-networked container does not inherit the host's
+# /etc/hosts, so e.g. aihdb01.internal / horde-db-lb would otherwise fail to resolve.
+# Leave empty when the names resolve via DNS the container can reach.
+ai_horde_extra_hosts: []
 
 # Docker-mode logging.  journald avoids double-writing (Alloy already
 # collects from the journal) while keeping `docker logs` functional.
@@ -96,7 +111,7 @@ ai_horde_log_driver: "journald"
 ai_horde_start_services: true
 
 # Replicas for AI-Horde backend. Applied via the `scale` parameter of the
-# community.docker.docker_compose_v2 module — not via deploy.replicas.
+# community.docker.docker_compose_v2 module, not via deploy.replicas.
 ai_horde_replicas: 1
 ai_horde_waitress_threads: 45
 ai_horde_waitress_connection_limit: 1024

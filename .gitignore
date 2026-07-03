@@ -20,7 +20,7 @@ local-deploy/*
 *.swp
 
 # Production deployment files (host-specific, may contain secrets)
-inventory_orc.yml
+inventory_prod.yml
 group_vars/
 site_monitoring.yml
 DEPLOY_NOTES.md

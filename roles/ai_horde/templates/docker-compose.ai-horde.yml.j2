@@ -49,6 +49,9 @@ services:
 {% endfor %}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+{% for _eh in ai_horde_extra_hosts | default([]) %}
+      - "{{ _eh }}"
+{% endfor %}
     networks:
       - aihorde_network
     depends_on:
