@@ -17,10 +17,12 @@
         )
       - horde_alloy_loki_endpoint  | length > 0 or not (horde_alloy_collect_logs | bool)
       - horde_alloy_tempo_endpoint | length > 0 or not (horde_alloy_collect_traces | bool)
+      - horde_alloy_pyroscope_endpoint | length > 0 or not (horde_alloy_collect_profiles | bool)
     fail_msg: >-
       Alloy endpoints must be configured when the corresponding collection
       pipeline is enabled. Set horde_alloy_mimir_endpoint, horde_alloy_loki_endpoint,
-      and/or horde_alloy_tempo_endpoint in your inventory.
+      horde_alloy_tempo_endpoint, and/or horde_alloy_pyroscope_endpoint in your
+      inventory.
 
 - name: Validate Alloy basic auth is not using default password
   ansible.builtin.assert:

@@ -157,6 +157,24 @@ horde_alloy_otlp_listen_address: "0.0.0.0"
 horde_alloy_otlp_grpc_port: 4317
 horde_alloy_otlp_http_port: 4318
 
+# ---------------------------------------------------------------------------
+# Profile relay (Pyroscope receiver for local app instrumentation)
+# ---------------------------------------------------------------------------
+# When true, Alloy exposes a Pyroscope receive_http endpoint on this host that
+# instrumented apps push profiles into, then relays them to the central Pyroscope
+# (horde_alloy_pyroscope_endpoint), stamping basic auth + X-Scope-OrgID. Mirrors the
+# OTLP->Tempo trace relay. Off by default.
+horde_alloy_collect_profiles: false
+# Central Pyroscope push endpoint (HAProxy basic-auth ingestion frontend). Required
+# when horde_alloy_collect_profiles is true.
+horde_alloy_pyroscope_endpoint: ""
+# Tenant (X-Scope-OrgID) stamped on relayed profiles. Empty => no tenant header.
+horde_alloy_pyroscope_tenant_id: ""
+# Bind address/port for the local Pyroscope receiver apps push into. 0.0.0.0 lets
+# Docker containers reach it via the bridge gateway (host.docker.internal:4041).
+horde_alloy_pyroscope_receive_listen_address: "0.0.0.0"
+horde_alloy_pyroscope_receive_port: 4041
+
 # Batch processor tuning
 horde_alloy_trace_batch_timeout: "5s"
 horde_alloy_trace_batch_size: 8192

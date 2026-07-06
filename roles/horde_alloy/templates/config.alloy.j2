@@ -406,6 +406,45 @@ loki.write "loki" {
 
 {% endif %}
 // ============================================================================
+// PROFILES PIPELINE (Pyroscope profiles relayed from instrumented applications)
+// ============================================================================
+{% if horde_alloy_collect_profiles | bool %}
+// Local receiver: instrumented apps push profiles here (the app's pyroscope
+// client cannot do basic auth, so it targets this unauthenticated local endpoint
+// via host.docker.internal). Alloy relays upstream with auth + tenant below.
+pyroscope.receive_http "profiles" {
+  http {
+    listen_address = {{ horde_alloy_pyroscope_receive_listen_address | to_json }}
+    listen_port    = {{ horde_alloy_pyroscope_receive_port }}
+  }
+  forward_to = [pyroscope.write.central.receiver]
+}
+
+pyroscope.write "central" {
+  endpoint {
+    url = {{ horde_alloy_pyroscope_endpoint | to_json }}
+
+{% if horde_alloy_pyroscope_tenant_id | length > 0 %}
+    headers = {
+      "X-Scope-OrgID" = {{ horde_alloy_pyroscope_tenant_id | to_json }},
+    }
+{% endif %}
+{% if horde_alloy_basic_auth_username %}
+    basic_auth {
+      username = {{ horde_alloy_basic_auth_username | to_json }}
+      password = {{ horde_alloy_basic_auth_password | to_json }}
+    }
+{% endif %}
+{% if horde_alloy_tls_ca_cert %}
+    tls_config {
+      ca_file = "{{ horde_alloy_config_dir }}/ca.crt"
+    }
+{% endif %}
+  }
+}
+
+{% endif %}
+// ============================================================================
 // OTLP PIPELINE (traces + metrics from instrumented applications)
 // ============================================================================
 {% if horde_alloy_collect_traces | bool %}
