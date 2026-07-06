@@ -48,7 +48,15 @@ ai_horde_listen: "127.0.0.1"
 ai_horde_host_network_enabled: false
 
 ai_horde_horde_type: "stable"
-ai_horde_verbosity: "-vvvvi"
+# Force this app instance to acquire the background-job quorum at startup.
+# Enable on at most one production host during a controlled handoff.
+ai_horde_force_quorum: false
+# Force a full cache reload at startup (server.py --reload_all_caches). Pair with the
+# forced-quorum owner, which runs the shared-DB maintenance and rebuilds the caches for
+# the fleet; leave false on the worker-serving hosts.
+ai_horde_reload_all_caches: false
+# Verbosity for server.py (log level). Uses `-v` count form (e.g. "-vvvv" for 4).
+ai_horde_verbosity: "-vvvv"
 
 ai_horde_base_dir: "/opt/ai-horde"
 ai_horde_data_dir: "/var/lib/ai-horde"

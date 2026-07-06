@@ -43,6 +43,12 @@ services:
       - "{{ ai_horde_verbosity }}"
       - "--horde"
       - "{{ ai_horde_horde_type }}"
+{% if ai_horde_force_quorum | default(false) | bool %}
+      - "--quorum"
+{% endif %}
+{% if ai_horde_reload_all_caches | default(false) | bool %}
+      - "--reload_all_caches"
+{% endif %}
       - "-p"
       - "{{ _p }}"
       - "--listen"
@@ -103,6 +109,12 @@ services:
       - "{{ ai_horde_verbosity }}"
       - "--horde"
       - "{{ ai_horde_horde_type }}"
+{% if ai_horde_force_quorum | default(false) | bool %}
+      - "--quorum"
+{% endif %}
+{% if ai_horde_reload_all_caches | default(false) | bool %}
+      - "--reload_all_caches"
+{% endif %}
       - "--waitress_threads"
       - "{{ ai_horde_waitress_threads }}"
       - "--waitress_connection_limit"
