@@ -169,7 +169,15 @@
   when: horde_monitoring_install_alerting_rules | bool
 
 - name: Configure HAProxy for monitoring
-  ansible.builtin.include_tasks: haproxy.yml
+  ansible.builtin.include_tasks:
+    file: haproxy.yml
+    apply:
+      tags:
+        - haproxy
+        - monitoring_haproxy
+  tags:
+    - haproxy
+    - monitoring_haproxy
   when: horde_monitoring_configure_haproxy | bool
 
 - name: Configure firewall rules

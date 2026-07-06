@@ -83,6 +83,30 @@ frontend tempo_ingestion_front
     default_backend horde_monitoring_tempo_otlp_backend
 {% endif %}
 
+{% if horde_monitoring_configure_pyroscope_ingestion_frontend | default(false) | bool and horde_monitoring_install_pyroscope | bool %}
+userlist pyroscope_ingestion_auth
+    user {{ horde_monitoring_pyroscope_ingestion_auth_user }} insecure-password {{ horde_monitoring_pyroscope_ingestion_auth_password }}
+
+frontend pyroscope_ingestion_front
+    bind 0.0.0.0:{{ horde_monitoring_pyroscope_ingestion_port }}
+    mode http
+    acl authenticated http_auth(pyroscope_ingestion_auth)
+    http-request auth realm pyroscope unless authenticated
+    default_backend horde_monitoring_pyroscope_backend
+{% endif %}
+
+{% if horde_monitoring_configure_mimir_ingestion_frontend | default(false) | bool %}
+userlist mimir_ingestion_auth
+    user {{ horde_monitoring_mimir_ingestion_auth_user }} insecure-password {{ horde_monitoring_mimir_ingestion_auth_password }}
+
+frontend mimir_ingestion_front
+    bind 0.0.0.0:{{ horde_monitoring_mimir_ingestion_port }}
+    mode http
+    acl authenticated http_auth(mimir_ingestion_auth)
+    http-request auth realm mimir unless authenticated
+    default_backend horde_monitoring_mimir_backend
+{% endif %}
+
 {% if horde_monitoring_configure_service_alerts_egress_frontend | default(false) | bool %}
 # Service-alerts egress frontend — exposes Alertmanager + Mimir to a remote
 # ai-horde-service-alerts middleman behind HAProxy basic auth. Implicitly

@@ -590,6 +590,34 @@ horde_monitoring_tempo_ingestion_port: 4320
 horde_monitoring_tempo_ingestion_auth_user: "alloy"
 horde_monitoring_tempo_ingestion_auth_password: "changeme-tempo-ingestion"
 
+# Pyroscope ingestion frontend — exposes Pyroscope's push API to remote Alloy
+# profile relays behind HAProxy basic auth.  Requires
+# horde_monitoring_install_pyroscope: true.  The frontend forwards to the
+# horde_monitoring_pyroscope_backend defined above.
+horde_monitoring_configure_pyroscope_ingestion_frontend: false
+# Port HAProxy listens on for remote Alloy profile pushes (distinct from
+# Pyroscope's internal port to avoid conflicts with the localhost-only Docker
+# mapping).
+horde_monitoring_pyroscope_ingestion_port: 4041
+# Basic auth credentials — override in vault.  These must match the
+# horde_alloy_basic_auth_username / password on remote Alloy profile relays.
+horde_monitoring_pyroscope_ingestion_auth_user: "alloy"
+horde_monitoring_pyroscope_ingestion_auth_password: "changeme-pyroscope-ingestion"
+
+# Mimir OTLP metrics ingestion frontend — exposes Mimir's OTLP metrics push API to
+# remote Alloy agents behind HAProxy basic auth.  Mimir is always installed, so the
+# frontend forwards to the horde_monitoring_mimir_backend defined above.  Remote
+# Alloy points otelcol.exporter.otlphttp at http://<orc>:<port>/otlp, which POSTs to
+# /otlp/v1/metrics (Mimir's native OTLP ingest path).
+horde_monitoring_configure_mimir_ingestion_frontend: false
+# Port HAProxy listens on for remote Alloy OTLP metric pushes (distinct from Mimir's
+# internal 9009 to avoid conflicts with the localhost-only Docker mapping).
+horde_monitoring_mimir_ingestion_port: 9119
+# Basic auth credentials — override in vault.  These must match the
+# horde_alloy_basic_auth_username / password on remote Alloy agents.
+horde_monitoring_mimir_ingestion_auth_user: "alloy"
+horde_monitoring_mimir_ingestion_auth_password: "changeme-mimir-ingestion"
+
 # Service-alerts egress frontend — exposes Alertmanager + Mimir read API to
 # a remote ai-horde-service-alerts middleman behind HAProxy basic auth.
 # Path routing: /prometheus/* -> Mimir, /api/v2/* and /-/* -> Alertmanager.
