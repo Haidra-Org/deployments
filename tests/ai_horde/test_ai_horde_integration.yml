@@ -65,8 +65,12 @@
     - name: Assert compose has log rotation
       ansible.builtin.assert:
         that:
-          - "'max-size' in _compose_content.content | b64decode"
-          - "'max-file' in _compose_content.content | b64decode"
+          - "'logging' in _compose_content.content | b64decode"
+          - "'driver' in _compose_content.content | b64decode"
+        fail_msg: >-
+          Compose must define logging configuration. The default journald
+          driver delegates rotation to the host journald; max-size/max-file
+          are only expected when the driver is json-file or local.
 
     - name: Assert compose has horde.logs labels for log collection
       ansible.builtin.assert:
