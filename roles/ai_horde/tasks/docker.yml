@@ -47,16 +47,16 @@
   ansible.builtin.file:
     path: "{{ ai_horde_data_dir }}/postgres"
     state: directory
+    mode: "0700"
     # Permission notes:
-    #   - No owner, group, or mode are enforced here because the postgres
-    #     container chowns this directory to UID 999 and initdb chmods it to
-    #     0700 at startup.  Enforcing any of these on re-run would break
-    #     idempotency and risk racing with a running container.
-    #   - The parent directory ({{ ai_horde_data_dir }}) is root:root 0750,
-    #     providing host-side access control.
-    #   - On initial creation the system umask (typically 0022 → 0755) ensures
-    #     the container UID 999 can traverse into the directory before Docker
-    #     takes ownership.
+    #   - Mode 0700 matches what postgres initdb sets at container startup,
+    #     keeping the task idempotent across re-runs.
+    #   - Owner/group are intentionally not enforced — the postgres container
+    #     chowns this directory to UID 999 at startup, and re-applying
+    #     root:root would break idempotency and risk racing with a running
+    #     container.
+    #   - On initial creation the directory is root:root 0700; the container
+    #     entrypoint runs as root and can chown it before dropping privileges.
   become: true
   when: ai_horde_embedded_postgres_enabled | bool
 
