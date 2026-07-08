@@ -1,6 +1,40 @@
+#!/bin/bash
 set -e
+
+# Define paths for clarity
+TARGET_CERT="/etc/haproxy/cert/{{ artbot_revproxy_domain }}.pem"
+BACKUP_CERT="/etc/haproxy/cert/{{ artbot_revproxy_domain }}.pem.bak"
+TEMP_CERT="/tmp/{{ artbot_revproxy_domain }}.pem.tmp"
+
+# 1. Fetch/renew the certificate via Certbot
 certbot certonly \
---domains {{ artbot_revproxy_domain }},{{ artbot_revproxy_other_domains }} \
---keep-until-expiring --http-01-port 60001 --agree-tos --standalone -n --expand
-cat /etc/letsencrypt/live/{{ artbot_revproxy_domain }}/privkey.pem /etc/letsencrypt/live/{{ artbot_revproxy_domain }}/fullchain.pem > /etc/haproxy/cert/{{ artbot_revproxy_domain }}.pem
-systemctl reload haproxy
+  --domains {{ artbot_revproxy_domain }},{{ artbot_revproxy_other_domains }} \
+  --keep-until-expiring --http-01-port 60001 --agree-tos --standalone -n --expand
+
+# Combine the newly fetched keys into a temporary file
+cat /etc/letsencrypt/live/{{ artbot_revproxy_domain }}/privkey.pem /etc/letsencrypt/live/{{ artbot_revproxy_domain }}/fullchain.pem > "$TEMP_CERT"
+
+# 2. Check if an existing cert exists to compare against
+if [ -f "$TARGET_CERT" ]; then
+    # 3. Compare the new cert with the existing one
+    if cmp -s "$TEMP_CERT" "$TARGET_CERT"; then
+        echo "Certificate has not changed. No restart required."
+        rm -f "$TEMP_CERT"
+    else
+        echo "New certificate detected! Backing up the old one and updating..."
+        # Make a copy of the existing cert before overwriting
+        cp "$TARGET_CERT" "$BACKUP_CERT"
+        
+        # Move the new cert into place
+        mv "$TEMP_CERT" "$TARGET_CERT"
+        
+        # Restart HAProxy instead of reloading
+        echo "Restarting HAProxy..."
+        systemctl restart haproxy
+    fi
+else
+    # First-time setup (no existing cert to backup or compare)
+    echo "No existing certificate found. Installing new certificate..."
+    mv "$TEMP_CERT" "$TARGET_CERT"
+    systemctl restart haproxy
+fi
