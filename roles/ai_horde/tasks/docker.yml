@@ -47,14 +47,16 @@
   ansible.builtin.file:
     path: "{{ ai_horde_data_dir }}/postgres"
     state: directory
-    # World-traversable so the postgres container user (UID 999) can enter
-    # the bind-mount directory.  The files inside are owned by UID 999 with
-    # mode 0700/0600, so host-side security is preserved at file level.
-    # 0750 would block UID 999 on re-runs and cause FATAL permission errors.
-    # Owner/group are intentionally not enforced — the postgres container
-    # chowns this directory to UID 999 at startup, and re-applying root:root
-    # would break idempotency (and could race with a running container).
-    mode: "0755"
+    # Permission notes:
+    #   - No owner, group, or mode are enforced here because the postgres
+    #     container chowns this directory to UID 999 and initdb chmods it to
+    #     0700 at startup.  Enforcing any of these on re-run would break
+    #     idempotency and risk racing with a running container.
+    #   - The parent directory ({{ ai_horde_data_dir }}) is root:root 0750,
+    #     providing host-side access control.
+    #   - On initial creation the system umask (typically 0022 → 0755) ensures
+    #     the container UID 999 can traverse into the directory before Docker
+    #     takes ownership.
   become: true
   when: ai_horde_embedded_postgres_enabled | bool
 
