@@ -135,7 +135,7 @@
     - name: Assert certbot script reloads haproxy
       ansible.builtin.assert:
         that:
-          - "'systemctl reload haproxy' in _certbot.content | b64decode"
+          - "'systemctl restart haproxy' in _certbot.content | b64decode"
 
     - name: Assert certbot script combines cert files
       ansible.builtin.assert:
