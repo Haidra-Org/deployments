@@ -22,7 +22,11 @@ Supported rewrites:
     (for example ``environment``/``instance`` mismatches across migrations).
 
 Usage:
-        patch_dashboard_uid.py <dashboard.json> <target-uid> [target-datasource-name] [collapse-labels-csv]
+        patch_dashboard_uid.py <dashboard.json> <target-uid> [target-datasource-name] [collapse-labels-csv] [preserve-uids-csv]
+
+``preserve-uids-csv`` lists datasource UIDs that must NOT be rewritten to the
+target UID (for example cross-tenant ``mimir-app``/``mimir-telemetry`` refs in
+a multi-datasource dashboard patched against a single-tenant target).
 
 The file is modified in-place.
 """
@@ -31,12 +35,21 @@ import re
 import sys
 from pathlib import Path
 
+_GRAFANA_VAR_RE = re.compile(r'^\$\{[^}]+\}$')
 _DS_VAR_RE = re.compile(r'^\$\{(?:DS_|ds_)[^}]*\}$')
 _HORDE_METRIC_RE = re.compile(r'\b(horde_[a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^{}]*\})?')
 
 
 def _is_ds_var(value):
     return isinstance(value, str) and _DS_VAR_RE.match(value)
+
+
+def _is_runtime_datasource_var(value):
+    return _is_grafana_var(value) and not _is_ds_var(value)
+
+
+def _is_grafana_var(value):
+    return isinstance(value, str) and _GRAFANA_VAR_RE.match(value)
 
 
 def _is_ds_variable_name(value):
@@ -61,10 +74,12 @@ def _collapse_metric_labels(expr, collapse_labels):
     return _HORDE_METRIC_RE.sub(_wrap_metric, expr)
 
 
-def patch(obj, uid, datasource_name=None, collapse_labels=None):
+def patch(obj, uid, datasource_name=None, collapse_labels=None, preserve_uids=None):
     """Recursively replace datasource references in legacy and v2 dashboards."""
     if collapse_labels is None:
         collapse_labels = []
+    if preserve_uids is None:
+        preserve_uids = set()
 
     if isinstance(obj, dict):
         # Query targets in classic dashboards use `expr`; patching here keeps
@@ -80,7 +95,17 @@ def patch(obj, uid, datasource_name=None, collapse_labels=None):
         # silently falls back to the org's default datasource, which is what
         # was making `instance`/`datname`/`mode` query variables resolve
         # against the wrong tenant.
-        if obj.get("type") == "prometheus":
+        #
+        # Exception: cross-tenant dashboards (for example the operations
+        # overview) hardcode real, provisioned datasource UIDs for other
+        # tenants (mimir-app, mimir-telemetry, ...). Those must be preserved
+        # so a single-tenant target patch does not collapse every panel onto
+        # the target datasource.
+        if (
+            obj.get("type") == "prometheus"
+            and obj.get("uid") not in preserve_uids
+            and not (preserve_uids and _is_runtime_datasource_var(obj.get("uid")))
+        ):
             obj["uid"] = uid
 
         # Generic UID replacement for datasource-variable UID placeholders.
@@ -154,10 +179,10 @@ def patch(obj, uid, datasource_name=None, collapse_labels=None):
                     var_ds["uid"] = uid
 
         for v in obj.values():
-            patch(v, uid, datasource_name, collapse_labels)
+            patch(v, uid, datasource_name, collapse_labels, preserve_uids)
     elif isinstance(obj, list):
         for v in obj:
-            patch(v, uid, datasource_name, collapse_labels)
+            patch(v, uid, datasource_name, collapse_labels, preserve_uids)
 
 
 def _strip_v2beta1_server_fields(obj):
@@ -197,9 +222,10 @@ def _strip_v2beta1_server_fields(obj):
 
 
 def main():
-    if len(sys.argv) not in (3, 4, 5):
+    if len(sys.argv) not in (3, 4, 5, 6):
         print(
-            f"Usage: {sys.argv[0]} <dashboard.json> <target-uid> [target-datasource-name] [collapse-labels-csv]",
+            f"Usage: {sys.argv[0]} <dashboard.json> <target-uid> "
+            "[target-datasource-name] [collapse-labels-csv] [preserve-uids-csv]",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -208,12 +234,15 @@ def main():
     uid = sys.argv[2]
     datasource_name = sys.argv[3] if len(sys.argv) >= 4 and sys.argv[3] else None
     collapse_labels = []
-    if len(sys.argv) == 5 and sys.argv[4]:
+    if len(sys.argv) >= 5 and sys.argv[4]:
         collapse_labels = [label.strip() for label in sys.argv[4].split(",") if label.strip()]
+    preserve_uids = set()
+    if len(sys.argv) == 6 and sys.argv[5]:
+        preserve_uids = {u.strip() for u in sys.argv[5].split(",") if u.strip()}
 
     data = json.loads(path.read_text())
     _strip_v2beta1_server_fields(data)
-    patch(data, uid, datasource_name, collapse_labels)
+    patch(data, uid, datasource_name, collapse_labels, preserve_uids)
     path.write_text(json.dumps(data, indent=2) + "\n")
 
 

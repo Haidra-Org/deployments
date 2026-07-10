@@ -118,6 +118,7 @@ complete example playbook.
 | `horde_alloy_journal_max_age`     | `24h`   | Max journal entry age on first start        |
 | `horde_alloy_collect_log_files`   | `[]`    | Glob patterns for file-based log collection |
 | `horde_alloy_collect_docker_logs` | `false` | Collect Docker container logs               |
+| `horde_alloy_docker_logs_tenant_id` | `""` | Optional Loki tenant override for Docker logs; empty uses `horde_alloy_tenant_id` |
 | `horde_alloy_log_labels`          | `{}`    | Extra labels on all log streams             |
 
 ### Traces Pipeline
@@ -134,6 +135,7 @@ complete example playbook.
 | `horde_alloy_forward_otlp_metrics` | `true`                 | Forward OTLP metrics to Mimir via OTLP HTTP endpoint                                                                     |
 | `horde_alloy_mimir_otlp_endpoint`  | `""`                   | Mimir OTLP ingest endpoint (required when `horde_alloy_forward_otlp_metrics: true`; e.g. `https://mimir.example.com/otlp`) |
 | `horde_alloy_otlp_metrics_tenant_id` | `ai-horde-telemetry` | Mimir tenant for OTLP-sourced metrics; defaults to the dedicated telemetry tenant with short retention (3d) to contain high-churn derived metric cardinality |
+| `horde_alloy_otlp_metric_resource_label_attributes` | `[]` | Low-cardinality OTLP resource attributes to copy into metric labels before export, as `{ resource_attribute, label }` items |
 
 ### Trace Filtering and Sampling
 

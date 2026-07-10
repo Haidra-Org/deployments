@@ -123,6 +123,10 @@ horde_alloy_journal_app_rules: []
 horde_alloy_collect_log_files: []
 # Collect Docker container logs (requires Docker on the host)
 horde_alloy_collect_docker_logs: false
+# Optional tenant override for Docker container logs. Empty means use the host's
+# default horde_alloy_tenant_id. Set this when app container logs should live in
+# a different Loki tenant than host journal/file logs.
+horde_alloy_docker_logs_tenant_id: ""
 
 # Docker container label used to opt-in to log collection.
 # Only containers with this label set to the filter value will be collected.
@@ -149,6 +153,10 @@ horde_alloy_collect_traces: true
 horde_alloy_forward_otlp_metrics: true
 # Tenant ID for OTLP-sourced metrics (may differ from scraped metrics).
 horde_alloy_otlp_metrics_tenant_id: "ai-horde-telemetry"
+# Optional resource attributes to copy into OTLP metric datapoint labels before
+# export. Keep this list low-cardinality. Each item:
+#   { resource_attribute: "deployment.environment.name", label: "deployment_environment_name" }
+horde_alloy_otlp_metric_resource_label_attributes: []
 
 # Bind address for the OTLP receiver — apps on this host send traces here.
 # 0.0.0.0 allows Docker containers to reach Alloy via the bridge gateway

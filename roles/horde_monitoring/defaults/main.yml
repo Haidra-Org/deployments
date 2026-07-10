@@ -217,6 +217,10 @@ horde_monitoring_mimir_split_queries_interval: "24h"
 # drops exponential histograms during OTLP ingestion.
 horde_monitoring_mimir_native_histograms_enabled: true
 
+# Optional OTLP resource attributes to promote to metric labels for the
+# telemetry tenant. Keep this list low-cardinality; it applies at Mimir ingest.
+horde_monitoring_mimir_promote_otel_resource_attributes: []
+
 # TSDB early head compaction (experimental in Mimir 2.15).
 # When in-memory series reach this threshold the ingester compacts the TSDB
 # head, evicting stale series older than active_series_metrics_idle_timeout
@@ -288,6 +292,18 @@ horde_monitoring_grafana_dashboard_dedupe_labels:
   - "environment"
   - "instance"
   - "job"
+
+# Cross-tenant datasource UIDs that must be preserved (not rewritten to
+# mimir-infra) when patching infra dashboards. Multi-datasource operational
+# dashboards (for example horde-operations-overview, horde-performance) live in
+# the infra set but deliberately hardcode real provisioned UIDs for other
+# tenants: app metrics via mimir-app and OTLP/telemetry metrics via
+# mimir-telemetry. Without this, the single-tenant infra patch collapses every
+# prometheus panel onto mimir-infra, where those series do not exist.
+horde_monitoring_grafana_infra_dashboard_preserve_uids:
+  - "mimir-app"
+  - "mimir-telemetry"
+  - "mimir-public"
 
 # Provision the infra dashboard subset (node_exporter, pm2, postgres) shipped
 # in horde-exporters/dashboards/.  These JSONs are Grafana v2beta1 exports

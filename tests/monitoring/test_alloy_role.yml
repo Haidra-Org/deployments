@@ -26,6 +26,9 @@
     horde_alloy_otlp_grpc_port: 4317
     horde_alloy_otlp_http_port: 4318
     horde_alloy_otlp_metrics_tenant_id: "test-tenant"
+    horde_alloy_otlp_metric_resource_label_attributes:
+      - { resource_attribute: "deployment.environment.name", label: "deployment_environment_name" }
+      - { resource_attribute: "host.name", label: "host_name" }
     horde_alloy_trace_batch_timeout: "5s"
     horde_alloy_trace_batch_size: 8192
     horde_alloy_mimir_endpoint: "https://mimir.test.local/api/v1/push"
@@ -207,6 +210,9 @@
         that:
           - "'otelcol.receiver.otlp' in (horde_alloy_config.content | b64decode)"
           - "'otelcol.processor.batch' in (horde_alloy_config.content | b64decode)"
+          - "'otelcol.processor.transform \"otlp_metric_resource_labels\"' in (horde_alloy_config.content | b64decode)"
+          - "'deployment_environment_name' in (horde_alloy_config.content | b64decode)"
+          - "'resource.attributes[\"deployment.environment.name\"]' in (horde_alloy_config.content | b64decode)"
           - "'otelcol.exporter.otlphttp' in (horde_alloy_config.content | b64decode)"
           - "'otelcol.auth.basic' in (horde_alloy_config.content | b64decode)"
           - "'tempo.test.local' in (horde_alloy_config.content | b64decode)"
@@ -522,12 +528,14 @@
     horde_alloy_log_level: "warn"
     horde_alloy_loki_endpoint: "https://loki.test.local/loki/api/v1/push"
     horde_alloy_tenant_id: "test-tenant"
+    horde_alloy_docker_logs_tenant_id: "app-tenant"
     horde_alloy_basic_auth_username: "alloy"
     horde_alloy_basic_auth_password: "test-secret-not-default"
     horde_alloy_tls_ca_cert: ""
     horde_alloy_collect_metrics: false
     horde_alloy_collect_logs: true
     horde_alloy_collect_journal: false
+    horde_alloy_journal_parse_level: true
     horde_alloy_collect_log_files: []
     horde_alloy_collect_docker_logs: true
     horde_alloy_collect_traces: false
@@ -579,7 +587,18 @@
           - "'discovery.relabel' in (horde_alloy_docker_config.content | b64decode)"
           - "'loki.source.docker' in (horde_alloy_docker_config.content | b64decode)"
           - "'loki.process' in (horde_alloy_docker_config.content | b64decode)"
+          - "'loki.write \"loki_docker\"' in (horde_alloy_docker_config.content | b64decode)"
+          - "'tenant_id = \"app-tenant\"' in (horde_alloy_docker_config.content | b64decode)"
+          - "'forward_to = [loki.write.loki_docker.receiver]' in (horde_alloy_docker_config.content | b64decode)"
         fail_msg: "Docker log collection pipeline must be present when enabled"
+
+    - name: Assert Docker log level parsing is present
+      ansible.builtin.assert:
+        that:
+          - "'parsed_level' in (horde_alloy_docker_config.content | b64decode)"
+          - "'kv_level' in (horde_alloy_docker_config.content | b64decode)"
+          - "'source     = \"level\"' in (horde_alloy_docker_config.content | b64decode)"
+        fail_msg: "Docker log collection must parse application levels into the level label"
 
     - name: Assert opt-in label filter is present
       ansible.builtin.assert:
@@ -616,6 +635,7 @@
     horde_alloy_collect_metrics: false
     horde_alloy_collect_logs: true
     horde_alloy_collect_journal: false
+    horde_alloy_journal_parse_level: true
     horde_alloy_collect_log_files: []
     horde_alloy_collect_docker_logs: true
     horde_alloy_collect_traces: false

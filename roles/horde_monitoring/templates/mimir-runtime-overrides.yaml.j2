@@ -20,6 +20,9 @@ overrides:
 {% endif %}
   {{ horde_monitoring_telemetry_tenant_id }}:
     compactor_blocks_retention_period: {{ horde_monitoring_telemetry_retention }}
+{% if horde_monitoring_mimir_promote_otel_resource_attributes | default([]) | length > 0 %}
+    promote_otel_resource_attributes: "{{ horde_monitoring_mimir_promote_otel_resource_attributes | join(',') }}"
+{% endif %}
 {% if horde_monitoring_mimir_telemetry_tenant_max_series | default(0) | int > 0 %}
     max_global_series_per_user: {{ horde_monitoring_mimir_telemetry_tenant_max_series }}
 {% endif %}

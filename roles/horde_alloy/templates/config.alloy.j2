@@ -371,9 +371,55 @@ loki.source.docker "containers" {
   }
 }
 
+{% set _docker_logs_tenant_id = horde_alloy_docker_logs_tenant_id | default('', true) %}
+{% set _docker_logs_use_separate_writer = (_docker_logs_tenant_id | length > 0) and (_docker_logs_tenant_id != horde_alloy_tenant_id) %}
 loki.process "docker" {
   stage.docker { }
-  forward_to = [loki.write.loki.receiver]
+{% if horde_alloy_journal_parse_level | bool %}
+  // Reuse the application log-level extraction for container logs so
+  // dashboard LogQL can filter on the low-cardinality `level` label.
+  stage.regex {
+    expression = "(?i)^(?P<parsed_level>DEBUG|INFO|NOTICE|WARN(?:ING)?|ERROR|CRIT(?:ICAL)?|FATAL|EMERG(?:ENCY)?|ALERT|PANIC)\\s*[|\\]]"
+  }
+
+  stage.labels {
+    values = {
+      "level" = "parsed_level",
+    }
+  }
+
+  stage.label_drop {
+    values = ["parsed_level"]
+  }
+
+  stage.regex {
+    expression = "(?i)(?:^|\\s)level=(?P<kv_level>debug|info|notice|warn(?:ing)?|error|crit(?:ical)?|fatal|emerg(?:ency)?|alert|panic)"
+  }
+
+  stage.labels {
+    values = {
+      "level" = "kv_level",
+    }
+  }
+
+  stage.label_drop {
+    values = ["kv_level"]
+  }
+
+  stage.replace {
+    expression = "(?i)(WARNING)"
+    source     = "level"
+    replace    = "warn"
+  }
+
+  stage.replace {
+    expression = "(?i)(CRITICAL)"
+    source     = "level"
+    replace    = "crit"
+  }
+
+{% endif %}
+  forward_to = [{% if _docker_logs_use_separate_writer %}loki.write.loki_docker.receiver{% else %}loki.write.loki.receiver{% endif %}]
 }
 
 {% endif %}
@@ -403,6 +449,35 @@ loki.write "loki" {
 {% endfor %}
   }
 }
+{% if horde_alloy_collect_docker_logs | bool and _docker_logs_use_separate_writer %}
+
+loki.write "loki_docker" {
+  endpoint {
+    url       = {{ horde_alloy_loki_endpoint | to_json }}
+    tenant_id = {{ _docker_logs_tenant_id | to_json }}
+
+{% if horde_alloy_basic_auth_username %}
+    basic_auth {
+      username = {{ horde_alloy_basic_auth_username | to_json }}
+      password = {{ horde_alloy_basic_auth_password | to_json }}
+    }
+{% endif %}
+
+{% if horde_alloy_tls_ca_cert %}
+    tls_config {
+      ca_file = "{{ horde_alloy_config_dir }}/ca.crt"
+    }
+{% endif %}
+  }
+
+  external_labels = {
+    "instance" = {{ ansible_hostname | to_json }},
+{% for k, v in horde_alloy_log_labels.items() %}
+    {{ k | to_json }} = {{ v | to_json }},
+{% endfor %}
+  }
+}
+{% endif %}
 
 {% endif %}
 // ============================================================================
@@ -556,13 +631,38 @@ otelcol.processor.batch "default" {
 
   output {
 {% if horde_alloy_forward_otlp_metrics | bool %}
+{% if horde_alloy_otlp_metric_resource_label_attributes | default([]) | length > 0 %}
+    metrics = [otelcol.processor.transform.otlp_metric_resource_labels.input]
+{% else %}
     metrics = [otelcol.processor.deltatocumulative.default.input]
+{% endif %}
 {% endif %}
     traces  = [otelcol.exporter.otlphttp.tempo.input]
   }
 }
 
 {% if horde_alloy_forward_otlp_metrics | bool %}
+{% if horde_alloy_otlp_metric_resource_label_attributes | default([]) | length > 0 %}
+// Copy selected low-cardinality resource attributes into metric labels before
+// export so Grafana can filter app metrics by host/environment.
+otelcol.processor.transform "otlp_metric_resource_labels" {
+  error_mode = "ignore"
+
+  metric_statements {
+    context = "datapoint"
+    statements = [
+{% for item in horde_alloy_otlp_metric_resource_label_attributes %}
+      `set(attributes[{{ item.label | to_json }}], resource.attributes[{{ item.resource_attribute | to_json }}]) where resource.attributes[{{ item.resource_attribute | to_json }}] != nil`,
+{% endfor %}
+    ]
+  }
+
+  output {
+    metrics = [otelcol.processor.deltatocumulative.default.input]
+  }
+}
+
+{% endif %}
 // Convert delta-temporality histograms/counters to cumulative before
 // shipping to Mimir. Logfire exports histograms as delta regardless of
 // OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, and Mimir's OTLP

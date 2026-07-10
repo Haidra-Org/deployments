@@ -19,6 +19,9 @@
     horde_monitoring_infrastructure_retention: "14d"
     horde_monitoring_public_tenant_id: "public-metrics"
     horde_monitoring_public_retention: "90d"
+    horde_monitoring_mimir_promote_otel_resource_attributes:
+      - deployment.environment.name
+      - host.name
     horde_monitoring_grafana_anonymous_enabled: true
     horde_monitoring_grafana_provision_dashboards: false
     horde_monitoring_alertmanager_url: "http://host.docker.internal:9093"
@@ -61,6 +64,7 @@
           - "'app-metrics:' in (horde_monitoring_mimir_runtime_overrides.content | b64decode)"
           - "'infra-metrics:' in (horde_monitoring_mimir_runtime_overrides.content | b64decode)"
           - "'public-metrics:' in (horde_monitoring_mimir_runtime_overrides.content | b64decode)"
+          - "'promote_otel_resource_attributes: \"deployment.environment.name,host.name\"' in (horde_monitoring_mimir_runtime_overrides.content | b64decode)"
           - "'max_total_query_length' in (horde_monitoring_mimir_runtime_overrides.content | b64decode)"
           - "'max_fetched_series_per_query' in (horde_monitoring_mimir_runtime_overrides.content | b64decode)"
           - "'AI Horde App' in (horde_monitoring_grafana_datasources.content | b64decode)"
@@ -157,6 +161,18 @@
           # PostgreSQL alerts should NOT be present (disabled by default)
           - "'PostgresExporterDown' not in (alerting_rules.content | b64decode)"
           - "'PostgresDown' not in (alerting_rules.content | b64decode)"
+          # OTLP AI-Horde app alerts must use the metric names currently
+          # emitted through Alloy/Mimir, not stale Prometheus client suffixes.
+          - "'horde_generate_duration_bucket' in (alerting_rules.content | b64decode)"
+          - "'horde_pop_duration_bucket' in (alerting_rules.content | b64decode)"
+          - "'horde_submit_outcomes' in (alerting_rules.content | b64decode)"
+          - "'horde_submit_outcomes_total' not in (alerting_rules.content | b64decode)"
+          - "'horde_pop_skipped' in (alerting_rules.content | b64decode)"
+          - "'horde_pop_skipped_total' not in (alerting_rules.content | b64decode)"
+          - "'horde_webhook_outcomes' in (alerting_rules.content | b64decode)"
+          - "'horde_webhook_outcomes_total' not in (alerting_rules.content | b64decode)"
+          - "'horde_job_duration_count' in (alerting_rules.content | b64decode)"
+          - "'horde_job_failures_total' not in (alerting_rules.content | b64decode)"
 
     - name: Read rendered recording rules
       ansible.builtin.slurp:
@@ -909,4 +925,6 @@
           - "'PostgresDeadlocks' in (alerting_postgres.content | b64decode)"
           - "'PostgresSlowQueries' in (alerting_postgres.content | b64decode)"
           - "'PostgresReplicationLag' in (alerting_postgres.content | b64decode)"
+          - "'pg_stat_database_deadlocks{job=' in (alerting_postgres.content | b64decode)"
+          - "'pg_stat_database_deadlocks_total' not in (alerting_postgres.content | b64decode)"
         fail_msg: "Alerting rules must include PostgreSQL health alerts when postgres alerts are enabled"

@@ -525,18 +525,15 @@ groups:
   # --- AI Horde OTLP application latency / reliability ---
   # Driven by histograms emitted from horde/telemetry.py via OTLP through
   # Alloy. All series live in the `{{ horde_monitoring_telemetry_tenant_id }}`
-  # Mimir tenant. Histograms are exported as **native histograms**
-  # (exponential buckets) and ingested into Mimir with
-  # `native_histograms_ingestion_enabled: true`. Quantiles therefore use the
-  # bare metric name (no `_bucket` / `_seconds` suffix) and `histogram_quantile`
-  # operates on the rate of the bare series.
+  # Mimir tenant. Current AI-Horde OTLP histograms materialize as Prometheus
+  # bucket series in Mimir, so quantiles must aggregate `_bucket` by `le`.
   - name: ai-horde-app-latency
     rules:
       - alert: HordeGenerateLatencyHigh
         expr: >-
           histogram_quantile(0.95,
-            sum by (horde_gentype) (
-              rate(horde_generate_duration[5m])
+            sum by (le, horde_gentype) (
+              rate(horde_generate_duration_bucket[5m])
             )
           ) > {{ horde_monitoring_otlp_generate_p95_threshold_seconds | default(2.0) }}
         for: 15m
@@ -553,7 +550,7 @@ groups:
       - alert: HordePopLatencyHigh
         expr: >-
           histogram_quantile(0.95,
-            sum(rate(horde_pop_duration[5m]))
+            sum by (le) (rate(horde_pop_duration_bucket[5m]))
           ) > {{ horde_monitoring_otlp_pop_p95_threshold_seconds | default(1.0) }}
         for: 10m
         labels:
@@ -568,7 +565,7 @@ groups:
 
       - alert: HordeWebhookFailureBurst
         expr: >-
-          sum(rate(horde_webhook_outcomes_total{outcome="giveup"}[5m])) > 0.1
+          sum(rate(horde_webhook_outcomes{outcome="giveup"}[5m])) > 0.1
         for: 5m
         labels:
           severity: warning
@@ -581,7 +578,7 @@ groups:
 
       - alert: HordeBackgroundJobFailures
         expr: >-
-          sum by (horde_job_name) (rate(horde_job_failures_total[10m])) > 0
+          sum by (horde_job_name) (rate(horde_job_duration_count{horde_job_failed="true"}[10m])) > 0
         for: 15m
         labels:
           severity: warning
@@ -597,7 +594,7 @@ groups:
         # failing repeatedly rather than any-failure. Surfaces a chronically
         # broken job vs. an occasional one-off.
         expr: >-
-          sum by (horde_job_name) (rate(horde_job_failures_total[5m])) > 0.05
+          sum by (horde_job_name) (rate(horde_job_duration_count{horde_job_failed="true"}[5m])) > 0.05
         for: 15m
         labels:
           severity: warning
@@ -612,9 +609,9 @@ groups:
         # model-failure regressions. Tunable via horde_monitoring_otlp_submit_fault_ratio.
         expr: >-
           (
-            sum(rate(horde_submit_outcomes_total{horde_outcome="faulted"}[10m]))
+            sum(rate(horde_submit_outcomes{horde_outcome="faulted"}[10m]))
           /
-            clamp_min(sum(rate(horde_submit_outcomes_total[10m])), 1)
+            clamp_min(sum(rate(horde_submit_outcomes[10m])), 1)
           ) > {{ horde_monitoring_otlp_submit_fault_ratio | default(0.05) }}
         for: 15m
         labels:
@@ -630,7 +627,7 @@ groups:
         # Sustained censored-output rate. Cross-check raid mode and recent
         # abuse log lines. Tunable via horde_monitoring_otlp_submit_censored_per_sec.
         expr: >-
-          sum(rate(horde_submit_outcomes_total{horde_outcome="censored"}[5m]))
+          sum(rate(horde_submit_outcomes{horde_outcome="censored"}[5m]))
             > {{ horde_monitoring_otlp_submit_censored_per_sec | default(0.5) }}
         for: 10m
         labels:
@@ -647,12 +644,12 @@ groups:
         # or content filters too tight).
         expr: >-
           (
-            topk(1, sum by (horde_skip_reason) (rate(horde_pop_skipped_total[10m])))
+            topk(1, sum by (horde_skip_reason) (rate(horde_pop_skipped[10m])))
           /
-            clamp_min(sum(rate(horde_pop_skipped_total[10m])), 1)
+            clamp_min(sum(rate(horde_pop_skipped[10m])), 1)
           ) > 0.8
             and
-          sum(rate(horde_pop_skipped_total[10m])) > 1
+          sum(rate(horde_pop_skipped[10m])) > 1
         for: 30m
         labels:
           severity: warning
@@ -851,7 +848,7 @@ groups:
 
       - alert: PostgresDeadlocks
         expr: >-
-          increase(pg_stat_database_deadlocks_total{job="{{ horde_monitoring_postgres_job_name }}"}[5m]) > 5
+          increase(pg_stat_database_deadlocks{job="{{ horde_monitoring_postgres_job_name }}"}[5m]) > 5
         for: 5m
         labels:
           severity: warning

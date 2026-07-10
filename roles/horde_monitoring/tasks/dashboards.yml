@@ -283,19 +283,22 @@
     "{{ item.2 }}"
     "{{ item.3 }}"
     "{{ item.4 }}"
+    "{{ item.5 }}"
   become: true
   loop: "{{ _patch_targets }}"
   loop_control:
     label: "{{ item.0 }}/{{ item.1.path | basename }}"
   vars:
     _dedupe_labels_csv: "{{ horde_monitoring_grafana_dashboard_dedupe_labels | join(',') }}"
+    _infra_preserve_uids_csv: "{{ horde_monitoring_grafana_infra_dashboard_preserve_uids | join(',') }}"
     _patch_targets: >-
       {{
         (horde_monitoring__app_dashboard_files.files | product(['app']) | map('reverse') | map('list')
          | product([[
              'mimir-app',
              horde_monitoring_application_datasource_name,
-             (_dedupe_labels_csv if horde_monitoring_grafana_dashboard_dedupe_enabled | bool else '')
+             (_dedupe_labels_csv if horde_monitoring_grafana_dashboard_dedupe_enabled | bool else ''),
+             ''
            ]])
          | map('flatten') | list)
         +
@@ -303,12 +306,13 @@
          | product([[
              'mimir-public',
              horde_monitoring_public_datasource_name,
-             (_dedupe_labels_csv if horde_monitoring_grafana_dashboard_dedupe_enabled | bool else '')
+             (_dedupe_labels_csv if horde_monitoring_grafana_dashboard_dedupe_enabled | bool else ''),
+             ''
            ]])
          | map('flatten') | list)
         +
         (horde_monitoring__infra_dashboard_files.files | product(['infra']) | map('reverse') | map('list')
-         | product([['mimir-infra', horde_monitoring_infrastructure_datasource_name, '']])
+         | product([['mimir-infra', horde_monitoring_infrastructure_datasource_name, '', _infra_preserve_uids_csv]])
          | map('flatten') | list)
       }}
   changed_when: false

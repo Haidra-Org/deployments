@@ -161,6 +161,7 @@ Garage and managed external S3 a variable-only change.
 | `horde_monitoring_telemetry_retention`    | `3d`                 | Retention period (short — high-churn data)       |
 | `horde_monitoring_public_tenant_id`       | `ai-horde-public`    | Read-only public tenant                          |
 | `horde_monitoring_public_retention`       | `90d`                | Retention period                                 |
+| `horde_monitoring_mimir_promote_otel_resource_attributes` | `[]` | Optional low-cardinality OTel resource attributes to promote to metric labels for the telemetry tenant |
 
 ### Mimir Performance Tuning
 
