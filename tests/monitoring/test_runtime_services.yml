@@ -45,7 +45,10 @@
     # Reduce resource footprint for CI containers
     horde_monitoring_mimir_memory_limit: "1g"
     horde_monitoring_s3_memory_limit: "256m"
-    horde_monitoring_grafana_memory_limit: "256m"
+    # Grafana 12.x can exceed 256m during startup/migration even in this
+    # minimal runtime test. Keep the test at the role default so health checks
+    # fail for real service issues rather than CI-only OOM restarts.
+    horde_monitoring_grafana_memory_limit: "512m"
     horde_monitoring_mimir_memcached_memory_mb: 64
     horde_monitoring_mimir_memcached_memory_limit: "128m"
 
@@ -86,14 +89,50 @@
         fail_msg: "Mimir ready check failed"
 
     - name: Verify Grafana health endpoint
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:3000/api/health"
-        method: GET
-        status_code: 200
-      register: horde_monitoring_grafana_health
-      retries: 20
-      delay: 3
-      until: horde_monitoring_grafana_health.status == 200
+      block:
+        - name: Wait for Grafana health endpoint
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:3000/api/health"
+            method: GET
+            status_code: 200
+          register: horde_monitoring_grafana_health
+          retries: 20
+          delay: 3
+          until: horde_monitoring_grafana_health.status == 200
+      rescue:
+        - name: Capture Grafana container status
+          ansible.builtin.command:
+            argv:
+              - docker
+              - inspect
+              - grafana
+              - --format
+              - "{{ '{{json .State}}' }}"
+          register: horde_monitoring_grafana_state
+          changed_when: false
+          failed_when: false
+
+        - name: Capture recent Grafana logs
+          ansible.builtin.command:
+            argv:
+              - docker
+              - logs
+              - --tail
+              - "120"
+              - grafana
+          register: horde_monitoring_grafana_logs
+          changed_when: false
+          failed_when: false
+
+        - name: Fail with Grafana diagnostics
+          ansible.builtin.fail:
+            msg: |-
+              Grafana health endpoint did not become ready.
+              Last health result: {{ horde_monitoring_grafana_health.msg | default(horde_monitoring_grafana_health.status | default('unknown')) }}
+              Container state: {{ horde_monitoring_grafana_state.stdout | default('(unavailable)') }}
+              Recent logs:
+              {{ horde_monitoring_grafana_logs.stderr | default('') }}
+              {{ horde_monitoring_grafana_logs.stdout | default('') }}
 
     - name: Assert Grafana is healthy
       ansible.builtin.assert:
