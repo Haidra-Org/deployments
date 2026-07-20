@@ -1,0 +1,32 @@
+# HAProxy for the load-test rig (`local_deploy.sh up --loadtest`).
+# Identical to docker-compose.fullstack-haproxy.yml except it mounts the
+# prod-shaped edge config rendered into runtime/ by the loadtest render, instead
+# of the version-controlled static default-mode config. See
+# tests/full_stack/templates/haproxy.loadtest.cfg.j2 for why the two differ.
+services:
+  haproxy:
+    image: haproxy:3.1-alpine
+    container_name: horde-haproxy
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:80:80"
+      - "127.0.0.1:8404:8404"
+    volumes:
+      - ../../runtime/haproxy/haproxy.loadtest.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - horde-stack
+    logging:
+      driver: local
+      options:
+        max-size: "25m"
+        max-file: "3"
+    depends_on: []
+
+networks:
+  horde-stack:
+    external: true
