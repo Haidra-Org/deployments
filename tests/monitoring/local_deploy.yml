@@ -90,6 +90,8 @@
     _local_prometheus_image: "prom/prometheus:v3.10.0"
     _local_exporter_base_image: "python:3.12-bookworm"
     _local_alloy_image: "grafana/alloy:v1.8.1"
+    # Load-test rig only (postgres_exporter for the tuned rig postgres).
+    _local_postgres_exporter_image: "quay.io/prometheuscommunity/postgres-exporter:v0.15.0"
 
     # Exporter install source
     _local_exporter_repo_url: "https://github.com/Haidra-Org/horde-exporters"
