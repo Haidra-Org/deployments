@@ -55,6 +55,26 @@ ai_horde_force_quorum: false
 # forced-quorum owner, which runs the shared-DB maintenance and rebuilds the caches for
 # the fleet; leave false on the worker-serving hosts.
 ai_horde_reload_all_caches: false
+
+# Dedicated quorum instance (bridge mode only). When true, render an additional
+# `aihorde-quorum` service ALONGSIDE the scaled `aihorde` pool. It runs with
+# `--quorum --reload_all_caches` so it holds the background-job quorum and runs
+# the shared-DB maintenance, mirroring the production model where a dedicated
+# host runs the stats-compile / cache-rebuild load off the worker-serving pool.
+# Because it has a distinct compose service name it is absent from the `aihorde`
+# Docker-DNS record that the edge (HAProxy server-template) resolves, so it is
+# excluded from client/worker rotation for free. Used by the load-test rig.
+ai_horde_quorum_instance_enabled: false
+# Published port for the quorum instance (host side; container still listens on
+# 7001). Kept clear of the scaled pool's 7001..700N range.
+ai_horde_quorum_port: 7300
+
+# Extra `-c key=value` server settings appended to the embedded postgres command,
+# after the always-present cron.database_name. Empty by default so normal deploys
+# are unchanged; the load-test rig sets production-mirrored tuning here
+# (shared_preload_libraries, auto_explain, work_mem, autovacuum, max_connections).
+ai_horde_postgres_extra_conf: []
+
 # Verbosity for server.py (log level). Uses `-v` count form (e.g. "-vvvv" for 4).
 ai_horde_verbosity: "-vvvv"
 

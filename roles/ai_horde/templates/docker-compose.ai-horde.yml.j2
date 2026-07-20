@@ -159,6 +159,68 @@ services:
       options:
         tag: "ai-horde"
 {% endif %}
+{% if ai_horde_quorum_instance_enabled | default(false) | bool %}
+
+{#- Dedicated quorum instance: reuses the image built/pulled for `aihorde` but
+    runs with --quorum --reload_all_caches and a DISTINCT service name so it is
+    absent from the `aihorde` Docker-DNS record the edge resolves (excluded from
+    rotation). Mirrors the production dedicated-maintenance host. #}
+  aihorde-quorum:
+    image: {{ ai_horde_image }}
+    restart: unless-stopped
+    command:
+      - python
+      - server.py
+      - "{{ ai_horde_verbosity }}"
+      - "--horde"
+      - "{{ ai_horde_horde_type }}"
+      - "--quorum"
+      - "--reload_all_caches"
+      - "--waitress_threads"
+      - "{{ ai_horde_waitress_threads }}"
+      - "--waitress_connection_limit"
+      - "{{ ai_horde_waitress_connection_limit }}"
+    labels:
+      horde.logs: "true"
+      horde.app: "ai-horde"
+      horde.component: "backend-quorum"
+    ports:
+      - "{{ ai_horde_listen }}:{{ ai_horde_quorum_port }}:7001"
+    env_file:
+      - {{ ai_horde_base_dir }}/.env
+{% for extra in ai_horde_extra_env_files | default([]) %}
+      - path: {{ extra if extra.startswith('/') else (ai_horde_base_dir ~ '/' ~ extra) }}
+        required: false
+{% endfor %}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+{% for _eh in ai_horde_extra_hosts | default([]) %}
+      - "{{ _eh }}"
+{% endfor %}
+    networks:
+      - aihorde_network
+    depends_on:
+{% if ai_horde_embedded_postgres_enabled %}
+      postgres:
+        condition: service_healthy
+{% endif %}
+{% if ai_horde_embedded_redis_enabled %}
+      redis:
+        condition: service_healthy
+{% endif %}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:7001/api/v2/status/heartbeat')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    logging:
+      driver: {{ ai_horde_log_driver }}
+{% if ai_horde_log_driver == 'journald' %}
+      options:
+        tag: "ai-horde-quorum"
+{% endif %}
+{% endif %}
 {% endif %}
 
 {% if ai_horde_embedded_postgres_enabled %}
@@ -166,7 +228,13 @@ services:
     image: {{ ai_horde_postgres_image }}
     container_name: aihorde-postgres
     restart: always
-    command: ["postgres", "-c", "cron.database_name={{ ai_horde_postgres_db }}"]
+{% set _pg_conf = ['cron.database_name=' ~ ai_horde_postgres_db] + (ai_horde_postgres_extra_conf | default([])) %}
+    command:
+      - postgres
+{% for _c in _pg_conf %}
+      - "-c"
+      - "{{ _c }}"
+{% endfor %}
     labels:
       horde.logs: "true"
       horde.app: "ai-horde"
