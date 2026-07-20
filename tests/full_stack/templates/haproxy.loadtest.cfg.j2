@@ -1,0 +1,169 @@
+# {{ ansible_managed }}
+#
+# LOAD-TEST edge config — rendered ONLY in `local_deploy.sh up --loadtest`.
+#
+# Why this file exists:
+#   The load-test rig deliberately mirrors the PRODUCTION dev-edge, not the local
+#   default. It reproduces the prod tuning that shapes queueing behaviour under
+#   load: a parameterized server pool sized from the instance count, per-server
+#   maxconn, leastconn balancing, a bounded queue timeout, priority classes that
+#   favour generative pop/submit over cheap status polling, and a 1s micro-cache
+#   on status/check. The default-mode edge stays SIMPLE on purpose; that config
+#   lives in the version-controlled static file
+#   local-deploy/static/haproxy/haproxy.cfg and is what a plain `up` uses. The
+#   two are the same edge shape (same backend names, same worker/client split)
+#   and diverge only where this one mirrors prod. Keep them recognizably aligned.
+#
+# Derived from local-deploy/static/haproxy/haproxy.cfg.
+{% set _server_count = (ai_horde_replicas | int) + (loadtest_haproxy_server_headroom | default(4) | int) %}
+{% set _maxconn = loadtest_haproxy_maxconn_per_server | default(35) | int %}
+{% set _queue_timeout = loadtest_haproxy_timeout_queue | default('30s') %}
+
+global
+    log stdout format raw local0
+    maxconn 8192
+
+defaults
+    log     global
+    mode    http
+    option  httplog
+    option  dontlognull
+    timeout connect 5000
+    timeout client  60000
+    timeout server  60000
+    maxconn 4000
+
+# -- Micro-cache: 1s TTL for status/check polling (prod parity) -------
+cache micro
+    total-max-size 32
+    max-object-size 32768
+    max-age 1
+
+frontend horde_local
+    bind *:80
+    maxconn 8192
+
+    # -- ACL definitions -----------------------------------------
+    acl worker_pop path -i -m end /pop
+    acl worker_submit path -i -m end /submit
+    acl aihorde_app_stats path_reg ^/(appstats)(/.*)?$
+    acl root path /
+    acl url_with_slash path_reg ^/(terms|privacy|news|faq|guis|v2-transfer|mission|register|sponsors)/$
+    acl url_without_slash path_reg ^/(terms|privacy|news|faq|guis|v2-transfer|mission|register|sponsors)$
+    acl spa_routes path_reg ^/(admin|details|contribute|profile)(/.*)?$
+    acl assets path_reg ^/?(assets|styles|favicon).*$
+    acl webapp_js path_end .js
+    acl api_without_slash path /api
+    acl spa_routes_noslash path_reg ^/(admin|details|contribute|profile)(/.*)?[^/]$
+    acl is_service_alerts path_beg /api/service-alerts/
+
+    # status/check polling: cheap, high-frequency, safely cacheable for ~1s
+    acl is_status_check path_reg ^/api/v2/(status/|generate/(check|text/status)/)
+    acl is_get method GET
+
+    # -- Priority classes (dequeue order when a backend queue forms) ----
+    # Lower class value is served first. Generative pop/submit outrank the
+    # cheap status/check polling so worker throughput is protected under load.
+    http-request set-priority-class int(-10) if worker_pop || worker_submit
+    http-request set-priority-class int(10) if is_status_check is_get
+
+    # -- Slash redirects (must precede use_backend) --------------
+    redirect code 301 prefix / drop-query append-slash if spa_routes_noslash
+    redirect code 301 prefix / drop-query append-slash if url_without_slash || api_without_slash
+
+    # -- Routing -------------------------------------------------
+    use_backend horde_service_alerts if is_service_alerts
+    use_backend horde_worker_api if worker_pop || worker_submit
+    use_backend ai_horde_app_stats if aihorde_app_stats
+    use_backend aihorde_frontend if root || url_with_slash || assets || webapp_js || spa_routes
+
+    # -- Default: API backend ------------------------------------
+    default_backend horde_client_api
+
+# -- Backends ----------------------------------------------------
+
+backend aihorde_frontend
+    balance leastconn
+    timeout queue {{ _queue_timeout }}
+    retries 3
+    option forwardfor if-none
+    option httpchk
+    http-check send meth GET uri /healthz hdr Host localhost
+    http-check expect status 200
+    server frontpage aihorde-frontpage:8006 check observe layer7 init-addr last,libc,none
+
+backend horde_client_api
+    balance leastconn
+    timeout queue {{ _queue_timeout }}
+    retries 3
+    option forwardfor if-none
+    option httpchk
+    http-check expect ! rstatus ^5
+    # 1s micro-cache for status/check GETs (prod parity). The ACLs are
+    # re-declared here: ACLs defined in the frontend are not in scope inside a
+    # backend, so cache-use/cache-store need their own copies.
+    acl is_status_check path_reg ^/api/v2/(status/|generate/(check|text/status)/)
+    acl is_get method GET
+    http-request cache-use micro if is_status_check is_get
+    http-response cache-store micro if is_status_check
+    server-template aihorde {{ _server_count }} aihorde:7001 check observe layer7 resolvers docker init-addr libc,none maxconn {{ _maxconn }}
+
+backend horde_worker_api
+    balance leastconn
+    timeout queue {{ _queue_timeout }}
+    retries 3
+    option forwardfor if-none
+    server-template aihorde {{ _server_count }} aihorde:7001 check resolvers docker init-addr libc,none maxconn {{ _maxconn }}
+
+backend ai_horde_app_stats
+    timeout queue {{ _queue_timeout }}
+    retries 3
+    option forwardfor if-none
+    option httpchk
+    server exporter horde-exporter:9150 check init-addr last,libc,none
+
+backend horde_model_reference
+    balance leastconn
+    timeout queue {{ _queue_timeout }}
+    retries 3
+    option forwardfor if-none
+    option httpchk
+    http-check send meth GET uri /api/heartbeat hdr Host localhost
+    http-check expect status 200
+    server model-reference model-reference:19800 check init-addr last,libc,none
+
+backend horde_service_alerts
+    balance leastconn
+    timeout queue 30s
+    retries 3
+    option forwardfor if-none
+    option httpchk
+    http-check send meth GET uri /healthz
+    http-check expect status 200
+    # Strip /api/service-alerts/ prefix before forwarding so the FastAPI
+    # service sees /api/v1/public/... or /healthz directly.
+    http-request replace-path ^/api/service-alerts/(.*) /\1
+    server service-alerts service-alerts:19810 check init-addr last,libc,none
+
+# -- Resolvers ---------------------------------------------------
+
+resolvers docker
+    nameserver dns 127.0.0.11:53
+    resolve_retries 3
+    timeout resolve 1s
+    timeout retry   1s
+    hold other      10s
+    hold refused    10s
+    hold nx         10s
+    hold timeout    10s
+    hold valid      10s
+    hold obsolete   10s
+
+# -- Stats -------------------------------------------------------
+
+frontend stats
+    bind *:8404
+    stats enable
+    stats uri /stats
+    stats refresh 10s
+    stats admin if LOCALHOST

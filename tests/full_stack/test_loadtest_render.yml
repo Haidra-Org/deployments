@@ -1,0 +1,98 @@
+---
+# idempotency: skip
+# Risk category: deploy-safety, operational
+# Load-test edge render test: validates that the prod-shaped HAProxy edge
+# template renders with the expected prod-mirror tuning and that its server
+# pool is parameterized from the instance count. Companion to the default-edge
+# assertions in test_fullstack_render.yml. Safe for CI — no Docker, no network.
+
+- name: Render load-test HAProxy edge (no Docker)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    _out_n4: /tmp/loadtest-render/haproxy.n4.cfg
+    _out_n8: /tmp/loadtest-render/haproxy.n8.cfg
+
+  tasks:
+    - name: Ensure output directory exists
+      ansible.builtin.file:
+        path: /tmp/loadtest-render
+        state: directory
+        mode: "0755"
+
+    - name: Render loadtest edge at N=4 (default headroom + tuning)
+      ansible.builtin.template:
+        src: templates/haproxy.loadtest.cfg.j2
+        dest: "{{ _out_n4 }}"
+        mode: "0644"
+      vars:
+        ai_horde_replicas: 4
+
+    - name: Render loadtest edge at N=8 (proves -n 8 fans out)
+      ansible.builtin.template:
+        src: templates/haproxy.loadtest.cfg.j2
+        dest: "{{ _out_n8 }}"
+        mode: "0644"
+      vars:
+        ai_horde_replicas: 8
+
+    - name: Read rendered N=4 edge
+      ansible.builtin.slurp:
+        path: "{{ _out_n4 }}"
+      register: _n4
+
+    - name: Read rendered N=8 edge
+      ansible.builtin.slurp:
+        path: "{{ _out_n8 }}"
+      register: _n8
+
+    - name: Assert edge keeps the same worker/client split and shape as the default
+      ansible.builtin.assert:
+        that:
+          - "'backend horde_client_api' in (_n4.content | b64decode)"
+          - "'backend horde_worker_api' in (_n4.content | b64decode)"
+          - "'default_backend horde_client_api' in (_n4.content | b64decode)"
+          - "'use_backend horde_worker_api if worker_pop || worker_submit' in (_n4.content | b64decode)"
+          - "'balance leastconn' in (_n4.content | b64decode)"
+        fail_msg: "Loadtest edge diverged from the default worker/client split shape"
+
+    - name: Assert prod-mirror tuning is present
+      ansible.builtin.assert:
+        that:
+          - "'cache micro' in (_n4.content | b64decode)"
+          - "'http-request cache-use micro' in (_n4.content | b64decode)"
+          - "'max-age 1' in (_n4.content | b64decode)"
+          - "'set-priority-class' in (_n4.content | b64decode)"
+          - "'maxconn 35' in (_n4.content | b64decode)"
+          - "'timeout queue 30s' in (_n4.content | b64decode)"
+        fail_msg: "Loadtest edge missing prod-mirror tuning (cache/priority/maxconn/queue)"
+
+    - name: Assert server pool is parameterized from N (4 + 4 headroom = 8)
+      ansible.builtin.assert:
+        that:
+          - "'server-template aihorde 8 aihorde:7001' in (_n4.content | b64decode)"
+        fail_msg: "Loadtest edge server-template count not derived from N at N=4"
+
+    - name: Assert server pool scales with N (8 + 4 headroom = 12)
+      ansible.builtin.assert:
+        that:
+          - "'server-template aihorde 12 aihorde:7001' in (_n8.content | b64decode)"
+        fail_msg: "Loadtest edge server-template count did not scale for N=8"
+
+    - name: Assert loadtest HAProxy compose mounts the rendered runtime edge
+      ansible.builtin.slurp:
+        path: "{{ playbook_dir }}/../../local-deploy/static/compose/docker-compose.fullstack-haproxy.loadtest.yml"
+      register: _loadtest_compose
+
+    - name: Verify loadtest compose points at the rendered edge, not the static default
+      ansible.builtin.assert:
+        that:
+          - "'runtime/haproxy/haproxy.loadtest.cfg' in (_loadtest_compose.content | b64decode)"
+          - "'horde-stack' in (_loadtest_compose.content | b64decode)"
+        fail_msg: "Loadtest HAProxy compose does not mount the rendered runtime edge"
+
+    - name: Clean up render output
+      ansible.builtin.file:
+        path: /tmp/loadtest-render
+        state: absent
