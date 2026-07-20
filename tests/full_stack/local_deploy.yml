@@ -44,6 +44,31 @@
     ai_horde_log_driver: "local"
     ai_horde_listen: "127.0.0.1"
     ai_horde_port: 7001
+
+    # Load-test mode. Set true via `-e loadtest_mode=true` (local_deploy.sh
+    # --loadtest). It layers production-mirrored shape onto the local stack:
+    # a dedicated quorum instance, tuned embedded postgres, prod pool sizing,
+    # and 25 waitress threads. Left false for the ordinary local deploy so that
+    # path is byte-for-byte unchanged.
+    loadtest_mode: false
+    # Prod parity: 25 waitress threads per instance under load, 45 otherwise.
+    ai_horde_waitress_threads: "{{ 25 if (loadtest_mode | bool) else 45 }}"
+    # Dedicated quorum instance only in loadtest mode.
+    ai_horde_quorum_instance_enabled: "{{ loadtest_mode | bool }}"
+    # Embedded-postgres tuning mirrored from prod aihdb01 (pg15). Overridable.
+    loadtest_pg_log_min_duration_ms: 1000
+    loadtest_pg_max_connections: 500
+    loadtest_pg_work_mem: "16MB"
+    _loadtest_pg_conf:
+      - "shared_preload_libraries=auto_explain,pg_stat_statements,pg_cron"
+      - "log_lock_waits=on"
+      - "log_min_duration_statement={{ loadtest_pg_log_min_duration_ms }}"
+      - "auto_explain.log_min_duration=1000"
+      - "auto_explain.log_analyze=off"
+      - "autovacuum_vacuum_scale_factor=0.05"
+      - "work_mem={{ loadtest_pg_work_mem }}"
+      - "max_connections={{ loadtest_pg_max_connections }}"
+    ai_horde_postgres_extra_conf: "{{ _loadtest_pg_conf if (loadtest_mode | bool) else [] }}"
     ai_horde_postgres_password: "localdev-postgres"
     ai_horde_secret_key: "localdev-secret-key"
     ai_horde_admins: ["test_user#1"]
@@ -62,13 +87,19 @@
     # role) so ai-horde containers reach them by service name over the
     # shared network — this avoids the IPv6 ENETUNREACH issue with
     # host.docker.internal on Linux Docker.
-    ai_horde_env_overrides:
+    _ai_horde_env_base:
       KUDOS_TRUST_THRESHOLD: "100"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy:4318"
       PYROSCOPE_SERVER_ADDRESS: "http://pyroscope:4040"
       # Flush metrics every 10 s so the OTLP smoke-test probe doesn't have to
       # wait for the 60 s production default before querying Mimir.
       OTEL_METRIC_EXPORT_INTERVAL: "10000"
+    # Prod-mirrored SQLAlchemy pool sizing, layered in only under loadtest mode.
+    _ai_horde_env_loadtest:
+      SQLALCHEMY_POOL_SIZE: "25"
+      SQLALCHEMY_MAX_OVERFLOW: "15"
+    ai_horde_env_overrides: >-
+      {{ _ai_horde_env_base | combine(_ai_horde_env_loadtest if (loadtest_mode | bool) else {}) }}
 
     aihorde_frontpage_start_services: false
     aihorde_frontpage_build_config: local
@@ -144,3 +175,19 @@
           version-controlled static file — ensure the repo checkout
           is complete.
       when: not _haproxy_cfg.stat.exists
+
+    # Load-test edge: rendered to runtime/ (not the static default) and mounted
+    # by docker-compose.fullstack-haproxy.loadtest.yml. Only in loadtest mode.
+    - name: Ensure runtime HAProxy directory exists (loadtest edge)
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../../local-deploy/runtime/haproxy"
+        state: directory
+        mode: "0755"
+      when: loadtest_mode | bool
+
+    - name: Render load-test HAProxy edge config
+      ansible.builtin.template:
+        src: templates/haproxy.loadtest.cfg.j2
+        dest: "{{ playbook_dir }}/../../local-deploy/runtime/haproxy/haproxy.loadtest.cfg"
+        mode: "0644"
+      when: loadtest_mode | bool

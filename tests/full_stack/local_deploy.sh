@@ -39,6 +39,15 @@ WITH_WORKER=false
 WITH_ARTBOT=false
 USE_LATEST_REFS=false
 INSTANCES=3
+INSTANCES_EXPLICIT=false
+# Load-test rig mode: production-shaped multi-instance substrate (quorum
+# instance out of rotation, prod-mirrored HAProxy edge + postgres, postgres
+# exporter). Set by --loadtest.  Defaults N to 4 and forces monitoring on.
+LOADTEST_MODE=false
+LOADTEST_INSTANCES_DEFAULT=4
+# Must match ai_horde_postgres_password in local_deploy.yml — the postgres
+# exporter DSN needs it to connect to the rig DB. Dev-only credential.
+LOADTEST_PG_PASSWORD="localdev-postgres"
 declare -a ANSIBLE_EXTRA_VARS=()
 
 # Pinned refs for reproducible local deploys.
@@ -133,8 +142,15 @@ dc_exporter_overlay() {
 }
 
 dc_haproxy() {
+  # Loadtest mode mounts the prod-shaped edge rendered into runtime/; default
+  # mode uses the version-controlled static edge. Same project so up/down/status
+  # reconcile the single horde-haproxy container either way.
+  local haproxy_compose="$STATIC_ROOT/compose/docker-compose.fullstack-haproxy.yml"
+  if [ "$LOADTEST_MODE" = true ]; then
+    haproxy_compose="$STATIC_ROOT/compose/docker-compose.fullstack-haproxy.loadtest.yml"
+  fi
   docker compose \
-    -f "$STATIC_ROOT/compose/docker-compose.fullstack-haproxy.yml" \
+    -f "$haproxy_compose" \
     --project-name horde-fullstack \
     "$@"
 }
@@ -280,6 +296,17 @@ check_fullstack_prerequisites() {
     for port in "${mon_ports[@]}"; do
       if port_conflict "$port"; then
         err "Port $port is already in use by a non-stack process (--with-monitoring)."
+        exit 1
+      fi
+    done
+  fi
+
+  if [ "$LOADTEST_MODE" = true ]; then
+    # 7300 = quorum instance; 9187 = postgres_exporter.
+    local loadtest_ports=(7300 9187)
+    for port in "${loadtest_ports[@]}"; do
+      if port_conflict "$port"; then
+        err "Port $port is already in use by a non-stack process (--loadtest)."
         exit 1
       fi
     done
@@ -731,7 +758,30 @@ stop_worker() {
 }
 
 
+# apply_loadtest_profile — turn --loadtest into concrete stack settings.
+# Forces monitoring on (needed for the postgres exporter + Mimir verification),
+# defaults N to 4 when the operator didn't pass -n/--instances, and injects the
+# ansible extra-vars that switch the app + monitoring renders into loadtest
+# shape (loadtest_mode, postgres alerts, exporter DSN password).  All of these
+# are additive: without --loadtest none of it is set and behaviour is unchanged.
+apply_loadtest_profile() {
+  [ "$LOADTEST_MODE" = true ] || return 0
+
+  WITH_MONITORING=true
+  if [ "$INSTANCES_EXPLICIT" != true ]; then
+    INSTANCES="$LOADTEST_INSTANCES_DEFAULT"
+  fi
+
+  ANSIBLE_EXTRA_VARS+=(-e "loadtest_mode=true")
+  ANSIBLE_EXTRA_VARS+=(-e "horde_monitoring_install_postgres_alerts=true")
+  ANSIBLE_EXTRA_VARS+=(-e "loadtest_postgres_password=$LOADTEST_PG_PASSWORD")
+
+  log "Load-test mode: ${INSTANCES} app instance(s) + quorum instance, prod-shaped"
+  log "  edge, tuned postgres, postgres_exporter; monitoring forced on."
+}
+
 cmd_up() {
+  apply_loadtest_profile
   check_fullstack_prerequisites
 
   # Tier 0: Infrastructure
@@ -766,6 +816,14 @@ cmd_up() {
     dc_backend logs --tail=50
     return 1
   }
+  if [ "$LOADTEST_MODE" = true ]; then
+    log "Waiting for dedicated quorum instance (port 7300, out of rotation) ..."
+    wait_for_url "http://127.0.0.1:7300/api/v2/status/heartbeat" "AI-Horde quorum" 300 || {
+      err "AI-Horde quorum instance did not start. Dumping logs:"
+      dc_backend logs --tail=50 aihorde-quorum
+      return 1
+    }
+  fi
   echo ""
 
   # Tier 2: Frontend (AiHordeFrontpage)
@@ -865,6 +923,15 @@ cmd_up() {
     # by service name (http://s3-store:3900) for the R2-compatible
     # presigned-URL flow exercised by /api/v2/generate/pop+submit.
     docker network connect horde-stack s3-store 2>/dev/null || true
+
+    if [ "$LOADTEST_MODE" = true ]; then
+      # postgres_exporter (on the monitoring network, scraped by Prometheus as
+      # job=postgres) and the rig postgres both join horde-stack so the exporter
+      # DSN can reach aihorde-postgres by service name.
+      log "Connecting postgres-exporter + aihorde-postgres to horde-stack network ..."
+      docker network connect horde-stack aihorde-postgres 2>/dev/null || true
+      docker network connect horde-stack postgres-exporter 2>/dev/null || true
+    fi
 
     wire_aihorde_to_garage || warn "AI-Horde ↔ Garage wiring failed; /generate/pop will return 500 on R2 sign."
   fi
@@ -1132,6 +1199,11 @@ print_banner() {
   info "  Models API:     http://localhost:19800/api/heartbeat"
   info "  Service alerts: http://localhost:19810/healthz"
   info "  HAProxy stats:  http://localhost:8404/stats"
+  if [ "$LOADTEST_MODE" = true ]; then
+    info "  Quorum inst.:   http://localhost:7300/  (out of HAProxy rotation)"
+    info "  PG exporter:    http://localhost:9187/metrics"
+    info "  Seed gen-stats: $0 seed   (activates the stats-compile load)"
+  fi
   if [ "$WITH_MONITORING" = true ]; then
     info "  Grafana:        http://localhost:${GRAFANA_PORT:-3000}/"
     info "  Prometheus:     http://localhost:9090/"
@@ -1157,6 +1229,12 @@ main() {
   local cmd="${1:-up}"
   shift || true
 
+  # `seed` forwards its own flags (--images/--text/...) straight to the seeder,
+  # bypassing the stack flag parser below.
+  if [ "$cmd" = "seed" ]; then
+    exec "$SCRIPT_DIR/seed_gen_stats.sh" "$@"
+  fi
+
   # Separate flags from positional arguments
   local -a positional=()
   while [ "$#" -gt 0 ]; do
@@ -1178,8 +1256,22 @@ main() {
         WITH_WORKER=true
         WITH_ARTBOT=true
         ;;
+      --loadtest)
+        LOADTEST_MODE=true
+        ;;
       --instances=*)
         INSTANCES="${1#--instances=}"
+        INSTANCES_EXPLICIT=true
+        ;;
+      -n)
+        shift
+        if [ "$#" -eq 0 ]; then err "Missing N for -n."; exit 1; fi
+        INSTANCES="$1"
+        INSTANCES_EXPLICIT=true
+        ;;
+      -n=*)
+        INSTANCES="${1#-n=}"
+        INSTANCES_EXPLICIT=true
         ;;
       --local-ai-horde=*)
         AI_HORDE_LOCAL_SRC="${1#--local-ai-horde=}"
@@ -1235,7 +1327,9 @@ main() {
       cmd_logs "${positional[0]:-}"
       ;;
     *)
-      echo "Usage: $0 {up|down|reup|status|logs} [--with-monitoring] [--with-worker] [--with-artbot] [--latest] [--all] [--instances=N] [--local-ai-horde PATH] [--local-frontpage PATH] [-e key=value]"
+      echo "Usage: $0 {up|down|reup|status|logs|seed} [--with-monitoring] [--with-worker] [--with-artbot] [--latest] [--all] [--loadtest] [-n N | --instances=N] [--local-ai-horde PATH] [--local-frontpage PATH] [-e key=value]"
+      echo "       $0 up --loadtest [-n 4]   # production-shaped multi-instance rig (forces monitoring; adds quorum instance, prod edge, tuned postgres, postgres_exporter)"
+      echo "       $0 seed [--images N] [--text N]   # bulk-load gen-stats rows to activate the stats-compile load (run after 'up --loadtest')"
       echo "       $0 reup <backend|frontpage|model-reference|service-alerts|haproxy|monitoring|artbot> [more...] [--latest]"
       echo "       --local-ai-horde PATH must point at a checkout whose Dockerfile supports AI_HORDE_DEPENDENCY_GROUPS and telemetry-profiling."
       exit 1
