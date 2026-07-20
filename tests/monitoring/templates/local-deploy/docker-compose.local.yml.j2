@@ -79,5 +79,24 @@ services:
       - loki
       - tempo
 
+{% if loadtest_mode | default(false) | bool %}
+  # Load-test rig only: exposes the tuned rig postgres to Prometheus under
+  # job="postgres". Attached to `monitoring` so Prometheus scrapes it by name;
+  # local_deploy.sh also connects it (and aihorde-postgres) to horde-stack so it
+  # can reach the DB by service name.
+  postgres-exporter:
+    image: {{ _local_postgres_exporter_image }}
+    container_name: postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://{{ ai_horde_postgres_user | default('aihorde') }}:{{ loadtest_postgres_password | default('localdev-postgres') }}@aihorde-postgres:5432/{{ ai_horde_postgres_db | default('aihorde') }}?sslmode=disable"
+    command:
+      - "--collector.stat_statements"
+    ports:
+      - "127.0.0.1:9187:9187"
+    restart: unless-stopped
+    networks:
+      - monitoring
+{% endif %}
+
 volumes:
   exporter-venv:

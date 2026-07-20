@@ -39,6 +39,15 @@ scrape_configs:
     scrape_interval: 15s
     static_configs:
       - targets: ['horde-exporter:{{ _local_exporter_port }}']
+{% if loadtest_mode | default(false) | bool %}
+
+  # Load-test rig only: postgres_exporter for the tuned rig postgres. Job name
+  # MUST be 'postgres' so the monitoring role's postgres alert rules match.
+  - job_name: 'postgres'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+{% endif %}
 
 remote_write:
   - url: http://mimir:{{ horde_monitoring_mimir_port }}/api/v1/push
