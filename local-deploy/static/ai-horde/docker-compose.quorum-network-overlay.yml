@@ -1,0 +1,21 @@
+# Overlay: connects the dedicated quorum instance to the shared horde-stack
+# network. Applied by local_deploy.sh only when the rendered backend compose
+# defines the aihorde-quorum service (loadtest mode), because compose rejects
+# an overlay that references an undefined service.
+#
+# Deliberately NO  alias on horde-stack: the edge resolves rotation
+# members through that DNS record, and the quorum instance must stay out of
+# rotation. Without this overlay the quorum cannot reach alloy (OTLP export)
+# or s3-store, so the applier metrics and spans recorded on the quorum are
+# silently dropped.
+services:
+  aihorde-quorum:
+    networks:
+      aihorde_network: {}
+      horde-stack: {}
+
+networks:
+  aihorde_network:
+    driver: bridge
+  horde-stack:
+    external: true
