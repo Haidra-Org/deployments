@@ -253,10 +253,14 @@
         src: /opt/ai-horde-profiling-test/.env
       register: _profiling_env_content
 
-    - name: Assert profiling env enables Pyroscope
+    - name: Assert profiling env enables Pyroscope without span profiles
       ansible.builtin.assert:
         that:
           - "'PYROSCOPE_ENABLED=\"true\"' in _profiling_env_content.content | b64decode"
+          # span_id is stamped on every root span and becomes a Pyroscope series
+          # label; enabling this alongside the profiler exhausts the tenant's
+          # active-series limit and fails ingestion for all of its profiles.
+          - "'PYROSCOPE_SPAN_PROFILES=\"false\"' in _profiling_env_content.content | b64decode"
 
 - name: Test AI-Horde guard (Pyroscope env override)
   hosts: testhost

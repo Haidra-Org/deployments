@@ -279,6 +279,28 @@ The audience filename convention for app dashboards is documented in
 | `horde_monitoring_install_pyroscope` | `true`                     | Enable Pyroscope         |
 | `horde_monitoring_pyroscope_image`              | `grafana/pyroscope:1.19.0` | Pyroscope image (pinned) |
 | `horde_monitoring_pyroscope_port`               | `4040`                     | HTTP API port            |
+| `horde_monitoring_pyroscope_max_global_series_per_user` | `50000`            | Active series ceiling per tenant (Pyroscope's own default is `5000`) |
+| `horde_monitoring_pyroscope_app_tenant_max_series` | `0`                     | Series limit override for the application tenant (`0` inherits global) |
+| `horde_monitoring_pyroscope_infra_tenant_max_series` | `0`                   | Series limit override for the infrastructure tenant (`0` inherits global) |
+| `horde_monitoring_pyroscope_telemetry_tenant_max_series` | `0`               | Series limit override for the telemetry tenant (`0` inherits global) |
+| `horde_monitoring_pyroscope_public_tenant_max_series` | `0`                  | Series limit override for the public tenant (`0` inherits global) |
+
+#### Profile cardinality
+
+A Pyroscope series is one unique label set per profile type, and Pyroscope tags
+arrive as labels. Exceeding a tenant's `max_global_series_per_user` rejects
+*every* profile from that tenant, so one unbounded tag takes down profiling
+wholesale — the symptom is `resource_exhausted: Maximum active series limit
+exceeded` in the sending Alloy's `pyroscope.write` logs, usually naming an
+innocent series such as `process_cpu`.
+
+The known offender is `span_id`, stamped on every root span by `pyroscope-otel`'s
+`PyroscopeSpanProcessor` (one series per request). It is suppressed in three
+independent places, deliberately: the app leaves `PYROSCOPE_SPAN_PROFILES` unset,
+the relaying Alloy drops the label via `horde_alloy_pyroscope_drop_labels`, and
+this limit caps the blast radius if something else introduces a per-request tag.
+Per-tenant overrides land in `runtime-overrides.yaml`, which `runtime_config`
+reloads every 10s — retune a tenant without restarting Pyroscope.
 
 ### HAProxy Integration
 

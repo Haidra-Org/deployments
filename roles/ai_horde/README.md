@@ -208,5 +208,6 @@ that so image selection and build args cannot drift from the runtime switch.
 | `ai_horde_otel_instrument_redis`   | `"false"`    | Enable OTel Redis instrumentation (noisy; pair with Alloy-side span filtering) |
 | `ai_horde_otel_traces_sampler_arg` | `"1.0"`      | Head sampler ratio (0.0–1.0); lower only under sustained high RPS              |
 | `ai_horde_pyroscope_enabled`       | `"false"`    | Enable continuous profiling and select/add the profiling dependency group       |
+| `ai_horde_pyroscope_span_profiles` | `"false"`    | Link spans to flamegraphs. Tags every root span with `span_id`, which Pyroscope stores as a series label — one active series per request. Leave off on request-serving instances |
 | `ai_horde_pyroscope_dependency_group` | `telemetry-profiling` | pyproject dependency group used when building a profiling-capable image |
 | `ai_horde_deployment_environment`  | `production` | Environment tag for separating dev/staging clusters in dashboards              |
