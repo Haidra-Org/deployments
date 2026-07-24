@@ -580,7 +580,7 @@ horde_monitoring_pyroscope_ingestion_burst_size_mb: 8
 # than arbitrarily. This is a ceiling, not a licence for unbounded labels — keep
 # per-request tags (span_id) out of profiles at the source; see
 # horde_alloy_pyroscope_drop_labels and the app's PYROSCOPE_SPAN_PROFILES.
-horde_monitoring_pyroscope_max_global_series_per_user: 50000
+horde_monitoring_pyroscope_max_global_series_per_tenant: 50000
 
 # Per-tenant series limits applied via runtime overrides (runtime_config reloads
 # these every 10s, no Pyroscope restart needed). 0 means inherit the global default.
