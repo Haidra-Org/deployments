@@ -14,6 +14,7 @@
 #   ./tests/full_stack/local_deploy.sh up --latest            # follow default branches + pull floating-tag images / rebuild exporter venv
 #   ./tests/full_stack/local_deploy.sh up --all               # everything
 #   ./tests/full_stack/local_deploy.sh up --local-ai-horde ../AI-Horde  # sync a local checkout; must support telemetry-profiling
+#   ./tests/full_stack/local_deploy.sh up --with-monitoring --local-horde-exporters ../horde-exporters  # provision dashboards from a local checkout
 #   ./tests/full_stack/local_deploy.sh down
 #   ./tests/full_stack/local_deploy.sh reup service-alerts --latest  # recreate one tier, repulling its image
 #   ./tests/full_stack/local_deploy.sh status
@@ -95,6 +96,10 @@ fi
 # Override via env or the --local-ai-horde / --local-frontpage flags.
 AI_HORDE_LOCAL_SRC="${AI_HORDE_LOCAL_SRC:-}"
 FRONTPAGE_LOCAL_SRC="${FRONTPAGE_LOCAL_SRC:-}"
+# When set (via --local-horde-exporters PATH), Grafana dashboards are
+# provisioned from this local horde-exporters checkout instead of the pinned
+# public git clone, so in-progress dashboard JSONs appear in the local rig.
+HORDE_EXPORTERS_LOCAL_SRC="${HORDE_EXPORTERS_LOCAL_SRC:-}"
 AI_HORDE_PROFILING_DEPENDENCY_GROUP="telemetry-profiling"
 
 
@@ -780,8 +785,27 @@ apply_loadtest_profile() {
   log "  edge, tuned postgres, postgres_exporter; monitoring forced on."
 }
 
+# apply_local_horde_exporters_source — when --local-horde-exporters PATH is set,
+# switch dashboard provisioning to the horde_monitoring role's local source
+# mode so dashboards come from the given checkout instead of the pinned public
+# git clone. The app/infra sub-paths match the horde-exporters repo layout; the
+# extra-vars are appended to ANSIBLE_EXTRA_VARS, which render_configs threads
+# into the monitoring playbook invocation. Additive: without the flag nothing
+# is set and behaviour is unchanged.
+apply_local_horde_exporters_source() {
+  [ -n "$HORDE_EXPORTERS_LOCAL_SRC" ] || return 0
+
+  ANSIBLE_EXTRA_VARS+=(-e "horde_monitoring_grafana_dashboards_source=local")
+  ANSIBLE_EXTRA_VARS+=(-e "horde_monitoring_grafana_dashboards_local_path=$HORDE_EXPORTERS_LOCAL_SRC")
+  ANSIBLE_EXTRA_VARS+=(-e "horde_monitoring_grafana_dashboards_local_app_path=packages/ai-horde-stats-exporter/src/ai_horde_stats_exporter/dashboards")
+  ANSIBLE_EXTRA_VARS+=(-e "horde_monitoring_grafana_dashboards_local_infra_path=dashboards")
+
+  log "Local horde-exporters dashboards: provisioning from $HORDE_EXPORTERS_LOCAL_SRC"
+}
+
 cmd_up() {
   apply_loadtest_profile
+  apply_local_horde_exporters_source
   check_fullstack_prerequisites
 
   # Tier 0: Infrastructure
@@ -1289,6 +1313,14 @@ main() {
         if [ "$#" -eq 0 ]; then err "Missing PATH for --local-frontpage."; exit 1; fi
         FRONTPAGE_LOCAL_SRC="$1"
         ;;
+      --local-horde-exporters=*)
+        HORDE_EXPORTERS_LOCAL_SRC="${1#--local-horde-exporters=}"
+        ;;
+      --local-horde-exporters)
+        shift
+        if [ "$#" -eq 0 ]; then err "Missing PATH for --local-horde-exporters."; exit 1; fi
+        HORDE_EXPORTERS_LOCAL_SRC="$1"
+        ;;
       -e|--extra-var|--extra-vars)
         shift
         if [ "$#" -eq 0 ]; then
@@ -1327,7 +1359,7 @@ main() {
       cmd_logs "${positional[0]:-}"
       ;;
     *)
-      echo "Usage: $0 {up|down|reup|status|logs|seed} [--with-monitoring] [--with-worker] [--with-artbot] [--latest] [--all] [--loadtest] [-n N | --instances=N] [--local-ai-horde PATH] [--local-frontpage PATH] [-e key=value]"
+      echo "Usage: $0 {up|down|reup|status|logs|seed} [--with-monitoring] [--with-worker] [--with-artbot] [--latest] [--all] [--loadtest] [-n N | --instances=N] [--local-ai-horde PATH] [--local-frontpage PATH] [--local-horde-exporters PATH] [-e key=value]"
       echo "       $0 up --loadtest [-n 4]   # production-shaped multi-instance rig (forces monitoring; adds quorum instance, prod edge, tuned postgres, postgres_exporter)"
       echo "       $0 seed [--images N] [--text N]   # bulk-load gen-stats rows to activate the stats-compile load (run after 'up --loadtest')"
       echo "       $0 reup <backend|frontpage|model-reference|service-alerts|haproxy|monitoring|artbot> [more...] [--latest]"
