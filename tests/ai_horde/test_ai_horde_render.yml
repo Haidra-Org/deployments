@@ -496,3 +496,67 @@
           - "'db.internal.example.com' in _env_ext.content | b64decode"
           - "'cache.internal.example.com' in _env_ext.content | b64decode"
         fail_msg: "External host names must appear in .env when embedded datastores are disabled"
+
+# ---------------------------------------------------------------------------
+# Play 9: Host-network quorum node render — the dedicated background-job node
+# (e.g. stablehorde_orig) binds a single instance off the 700x worker range,
+# forces the quorum, and reloads all caches at startup:
+#   server.py ... --quorum --reload_all_caches -p 7080 --listen <ip>
+# ---------------------------------------------------------------------------
+- name: Test AI-Horde role render (host-network quorum node)
+  hosts: testhost
+  become: true
+  vars:
+    ai_horde_start_services: false
+    ai_horde_base_dir: /opt/ai-horde-quorum-test
+    ai_horde_data_dir: /tmp/ai-horde-quorum-test/data
+    ai_horde_postgres_password: "test-pg-password"
+    ai_horde_secret_key: "test-secret-key-12345"
+    ai_horde_deployment_environment: "production"
+    ai_horde_embedded_postgres_enabled: false
+    ai_horde_embedded_redis_enabled: false
+    ai_horde_postgres_host: "db.internal.example.com"
+    ai_horde_redis_host: "cache.internal.example.com"
+    # Host-network, per-port parity mode.
+    ai_horde_host_network_enabled: true
+    ai_horde_listen: "10.0.0.1"
+    # Quorum node topology: single instance on 7080, off the 700x worker range.
+    ai_horde_port: 7080
+    ai_horde_replicas: 1
+    ai_horde_force_quorum: true
+    ai_horde_reload_all_caches: true
+  roles:
+    - ai_horde
+  post_tasks:
+    - name: Read docker-compose.yml (host-network quorum node)
+      ansible.builtin.slurp:
+        src: /opt/ai-horde-quorum-test/docker-compose.yml
+      register: _compose_quorum
+
+    - name: Assert compose renders a single host-network service on 7080
+      ansible.builtin.assert:
+        that:
+          - "'network_mode: host' in _compose_quorum.content | b64decode"
+          - "'aihorde-7080' in _compose_quorum.content | b64decode"
+          - "'aihorde-7001' not in _compose_quorum.content | b64decode"
+        fail_msg: >-
+          Host-network quorum node must render one service bound to 7080 and none on the
+          700x worker range.
+
+    - name: Assert compose passes --quorum, --reload_all_caches, and -p 7080
+      ansible.builtin.assert:
+        that:
+          - "'--quorum' in _compose_quorum.content | b64decode"
+          - "'--reload_all_caches' in _compose_quorum.content | b64decode"
+          - "'\"7080\"' in _compose_quorum.content | b64decode"
+          - "'10.0.0.1' in _compose_quorum.content | b64decode"
+        fail_msg: >-
+          Quorum node command must include --quorum, --reload_all_caches, and bind -p 7080
+          --listen <ip>.
+
+    - name: Assert compose publishes no bridge port range (host mode owns interfaces)
+      ansible.builtin.assert:
+        that:
+          - "':7080-7080:7001' not in _compose_quorum.content | b64decode"
+          - "'127.0.0.1:7001' not in _compose_quorum.content | b64decode"
+        fail_msg: "Host-network mode must not publish a bridge port range."

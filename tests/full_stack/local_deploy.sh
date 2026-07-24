@@ -114,6 +114,14 @@ dc_backend() {
   if [ "$WITH_MONITORING" != true ] && [ -f "$LOCAL_ROOT/ai-horde/docker-compose.garage.yml" ]; then
     args+=(-f "$LOCAL_ROOT/ai-horde/docker-compose.garage.yml")
   fi
+  if grep -q "^  aihorde-quorum:" "$LOCAL_ROOT/ai-horde/docker-compose.yml" 2>/dev/null; then
+    # The quorum overlay joins the dedicated applier instance to horde-stack
+    # (alloy, s3-store) without the `aihorde` alias that would put it into the
+    # edge rotation. It is gated on the rendered compose actually defining the
+    # aihorde-quorum service because compose rejects an overlay that references
+    # an undefined service.
+    args+=(-f "$STATIC_ROOT/ai-horde/docker-compose.quorum-network-overlay.yml")
+  fi
   docker compose "${args[@]}" --project-name horde-aihorde "$@"
 }
 
