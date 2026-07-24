@@ -81,6 +81,9 @@
       }}/release-manifest.json
     dest: /tmp/horde-dashboard-manifest.json
     mode: "0644"
+    # Fixed dest: without force a manifest left by an earlier release version is
+    # reused, resolving artifact filenames from the wrong version (404 on fetch).
+    force: true
   become: true
   when:
     - horde_monitoring_grafana_dashboards_source == 'release'
@@ -340,4 +343,5 @@
   loop:
     - /tmp/horde-dashboards.tar.gz
     - /tmp/horde-dashboards-release
+    - /tmp/horde-dashboard-manifest.json
   when: horde_monitoring_grafana_dashboards_source == 'release'
