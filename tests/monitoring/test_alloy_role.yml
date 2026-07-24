@@ -847,6 +847,10 @@
     horde_alloy_collect_profiles: true
     horde_alloy_pyroscope_endpoint: "https://pyroscope.test.local/ingest"
     horde_alloy_pyroscope_tenant_id: "ai-horde-app"
+    horde_alloy_pyroscope_receive_listen_address: "0.0.0.0"
+    horde_alloy_pyroscope_receive_port: 4041
+    horde_alloy_pyroscope_drop_labels:
+      - "span_id"
     horde_alloy_start_service: false
 
   tasks:
