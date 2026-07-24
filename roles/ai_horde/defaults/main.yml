@@ -161,6 +161,14 @@ ai_horde_otel_sdk_disabled: "false"
 # span filtering (horde_alloy_trace_filter_enabled) to drop fast cache hits.
 ai_horde_otel_instrument_redis: "false"
 ai_horde_pyroscope_enabled: "false"
+# Span-to-flamegraph linking (pyroscope-otel's PyroscopeSpanProcessor). Off, and
+# not merely by inertia: it tags every root span with its span_id, and Pyroscope
+# tags are series labels, so one active series is minted per request. That
+# exhausts the tenant's max_global_series_per_user within minutes at API request
+# rates, at which point Pyroscope rejects *every* profile from the tenant. Only
+# viable for workloads whose root spans are sparse. See also
+# horde_alloy_pyroscope_drop_labels, which strips span_id at the relay.
+ai_horde_pyroscope_span_profiles: "false"
 ai_horde_pyroscope_server_address: "http://host.docker.internal:4040"
 ai_horde_pyroscope_tenant_id: ""
 ai_horde_deployment_environment: "production"

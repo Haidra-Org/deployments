@@ -819,3 +819,78 @@
           - _role_env_stat.stat.exists
           - _role_env_stat.stat.mode == '0644'
         fail_msg: "Role must create /etc/default/alloy with mode 0644"
+
+# Profiles relay: the Pyroscope receiver must never forward raw to
+# pyroscope.write while horde_alloy_pyroscope_drop_labels is non-empty. Pyroscope
+# tags are series labels, and pyroscope-otel stamps span_id on every root span --
+# one active series per request, which exhausts the tenant's
+# max_global_series_per_user and fails ingestion for all profiles from that tenant.
+- name: Test horde_alloy - Profiles relay cardinality guard
+  hosts: testhost
+  become: true
+  gather_facts: true
+
+  vars:
+    horde_alloy_version: "1.8.1"
+    horde_alloy_config_dir: "/etc/alloy"
+    horde_alloy_data_dir: "/var/lib/alloy"
+    horde_alloy_log_level: "warn"
+    horde_alloy_http_listen_address: "127.0.0.1"
+    horde_alloy_http_port: 12345
+    horde_alloy_tls_ca_cert: ""
+    horde_alloy_basic_auth_username: ""
+    horde_alloy_basic_auth_password: ""
+    horde_alloy_collect_metrics: false
+    horde_alloy_collect_logs: false
+    horde_alloy_collect_traces: false
+    horde_alloy_forward_otlp_metrics: false
+    horde_alloy_collect_profiles: true
+    horde_alloy_pyroscope_endpoint: "https://pyroscope.test.local/ingest"
+    horde_alloy_pyroscope_tenant_id: "ai-horde-app"
+    horde_alloy_start_service: false
+
+  tasks:
+    - name: Deploy Alloy configuration (profiles relay)
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../roles/horde_alloy/templates/config.alloy.j2"
+        dest: "{{ horde_alloy_config_dir }}/config.alloy"
+        owner: alloy
+        group: alloy
+        mode: "0640"
+
+    - name: Read rendered Alloy config (profiles relay)
+      ansible.builtin.slurp:
+        path: "{{ horde_alloy_config_dir }}/config.alloy"
+      register: _profiles_config
+
+    - name: Assert receiver forwards through the relabel stage, not straight to write
+      ansible.builtin.assert:
+        that:
+          - "'pyroscope.receive_http \"profiles\"' in (_profiles_config.content | b64decode)"
+          - "'forward_to = [pyroscope.relabel.profiles.receiver]' in (_profiles_config.content | b64decode)"
+          - "'pyroscope.relabel \"profiles\"' in (_profiles_config.content | b64decode)"
+          - "'action = \"labeldrop\"' in (_profiles_config.content | b64decode)"
+          - "'regex  = \"span_id\"' in (_profiles_config.content | b64decode)"
+        fail_msg: "Profiles must pass through pyroscope.relabel dropping span_id before reaching pyroscope.write"
+
+    - name: Render profiles relay with the cardinality guard disabled
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../roles/horde_alloy/templates/config.alloy.j2"
+        dest: "{{ horde_alloy_config_dir }}/config-nodrop.alloy"
+        owner: alloy
+        group: alloy
+        mode: "0640"
+      vars:
+        horde_alloy_pyroscope_drop_labels: []
+
+    - name: Read rendered Alloy config (guard disabled)
+      ansible.builtin.slurp:
+        path: "{{ horde_alloy_config_dir }}/config-nodrop.alloy"
+      register: _profiles_config_nodrop
+
+    - name: Assert an empty drop list wires the receiver straight to the writer
+      ansible.builtin.assert:
+        that:
+          - "'pyroscope.relabel' not in (_profiles_config_nodrop.content | b64decode)"
+          - "'forward_to = [pyroscope.write.central.receiver]' in (_profiles_config_nodrop.content | b64decode)"
+        fail_msg: "horde_alloy_pyroscope_drop_labels: [] must omit the relabel component entirely"

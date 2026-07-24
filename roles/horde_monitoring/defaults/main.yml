@@ -571,6 +571,24 @@ horde_monitoring_pyroscope_self_profiling: true
 horde_monitoring_pyroscope_ingestion_rate_mb: 4
 horde_monitoring_pyroscope_ingestion_burst_size_mb: 8
 
+# Active series ceiling per tenant. Pyroscope's own default is 5000, which is far
+# too tight to leave implicit: one profile series exists per unique label set per
+# profile type, and blowing the limit rejects *every* profile from the tenant, not
+# just the offending series (resource_exhausted: "Maximum active series limit
+# exceeded" in Alloy's pyroscope.write logs). Cost is ingester head-block memory,
+# bounded by horde_monitoring_pyroscope_memory_limit, so raise deliberately rather
+# than arbitrarily. This is a ceiling, not a licence for unbounded labels — keep
+# per-request tags (span_id) out of profiles at the source; see
+# horde_alloy_pyroscope_drop_labels and the app's PYROSCOPE_SPAN_PROFILES.
+horde_monitoring_pyroscope_max_global_series_per_user: 50000
+
+# Per-tenant series limits applied via runtime overrides (runtime_config reloads
+# these every 10s, no Pyroscope restart needed). 0 means inherit the global default.
+horde_monitoring_pyroscope_app_tenant_max_series: 0
+horde_monitoring_pyroscope_infra_tenant_max_series: 0
+horde_monitoring_pyroscope_telemetry_tenant_max_series: 0
+horde_monitoring_pyroscope_public_tenant_max_series: 0
+
 # Backend port overrides for services not directly managed by this role.
 # These allow the HAProxy backends block to proxy to alertmanager and the
 # stats exporter without coupling this role to their install logic.

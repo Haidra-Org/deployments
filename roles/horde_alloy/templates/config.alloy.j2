@@ -492,8 +492,30 @@ pyroscope.receive_http "profiles" {
     listen_address = {{ horde_alloy_pyroscope_receive_listen_address | to_json }}
     listen_port    = {{ horde_alloy_pyroscope_receive_port }}
   }
+{% if horde_alloy_pyroscope_drop_labels | length > 0 %}
+  forward_to = [pyroscope.relabel.profiles.receiver]
+}
+
+// Cardinality guard. Pyroscope tags become series labels, and a per-request tag
+// (notably span_id, stamped by pyroscope-otel's PyroscopeSpanProcessor) mints one
+// active series per request -- enough to exhaust the tenant's
+// max_global_series_per_user in minutes and fail ingestion for every profile from
+// this host. Dropping the labels here bounds cardinality regardless of what the
+// applications are instrumented to send.
+// pyroscope.relabel is a public-preview component; CUSTOM_ARGS already passes
+// --stability.level=experimental, which is below public-preview and enables it.
+pyroscope.relabel "profiles" {
+  forward_to = [pyroscope.write.central.receiver]
+
+  rule {
+    action = "labeldrop"
+    regex  = {{ horde_alloy_pyroscope_drop_labels | join('|') | to_json }}
+  }
+}
+{% else %}
   forward_to = [pyroscope.write.central.receiver]
 }
+{% endif %}
 
 pyroscope.write "central" {
   endpoint {

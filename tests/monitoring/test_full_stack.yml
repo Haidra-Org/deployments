@@ -768,6 +768,10 @@
           - "'backend: s3' in (horde_monitoring_pyroscope_config.content | b64decode)"
           - "'runtime_config' in (horde_monitoring_pyroscope_config.content | b64decode)"
           - "'runtime-overrides.yaml' in (horde_monitoring_pyroscope_config.content | b64decode)"
+          # Must be set explicitly: Pyroscope's built-in default is 5000 active
+          # series per tenant, and exceeding it rejects every profile from that
+          # tenant, not just the offending series.
+          - "'max_global_series_per_user:' in (horde_monitoring_pyroscope_config.content | b64decode)"
 
     - name: Stat Pyroscope runtime overrides
       ansible.builtin.stat:
