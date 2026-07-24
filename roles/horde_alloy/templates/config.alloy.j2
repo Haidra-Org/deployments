@@ -499,7 +499,7 @@ pyroscope.receive_http "profiles" {
 // Cardinality guard. Pyroscope tags become series labels, and a per-request tag
 // (notably span_id, stamped by pyroscope-otel's PyroscopeSpanProcessor) mints one
 // active series per request -- enough to exhaust the tenant's
-// max_global_series_per_user in minutes and fail ingestion for every profile from
+// max_global_series_per_tenant in minutes and fail ingestion for every profile from
 // this host. Dropping the labels here bounds cardinality regardless of what the
 // applications are instrumented to send.
 // pyroscope.relabel is a public-preview component; CUSTOM_ARGS already passes

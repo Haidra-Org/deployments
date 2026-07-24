@@ -279,7 +279,7 @@ The audience filename convention for app dashboards is documented in
 | `horde_monitoring_install_pyroscope` | `true`                     | Enable Pyroscope         |
 | `horde_monitoring_pyroscope_image`              | `grafana/pyroscope:1.19.0` | Pyroscope image (pinned) |
 | `horde_monitoring_pyroscope_port`               | `4040`                     | HTTP API port            |
-| `horde_monitoring_pyroscope_max_global_series_per_user` | `50000`            | Active series ceiling per tenant (Pyroscope's own default is `5000`) |
+| `horde_monitoring_pyroscope_max_global_series_per_tenant` | `50000`            | Active series ceiling per tenant (Pyroscope's own default is `5000`) |
 | `horde_monitoring_pyroscope_app_tenant_max_series` | `0`                     | Series limit override for the application tenant (`0` inherits global) |
 | `horde_monitoring_pyroscope_infra_tenant_max_series` | `0`                   | Series limit override for the infrastructure tenant (`0` inherits global) |
 | `horde_monitoring_pyroscope_telemetry_tenant_max_series` | `0`               | Series limit override for the telemetry tenant (`0` inherits global) |
@@ -288,7 +288,7 @@ The audience filename convention for app dashboards is documented in
 #### Profile cardinality
 
 A Pyroscope series is one unique label set per profile type, and Pyroscope tags
-arrive as labels. Exceeding a tenant's `max_global_series_per_user` rejects
+arrive as labels. Exceeding a tenant's `max_global_series_per_tenant` rejects
 *every* profile from that tenant, so one unbounded tag takes down profiling
 wholesale — the symptom is `resource_exhausted: Maximum active series limit
 exceeded` in the sending Alloy's `pyroscope.write` logs, usually naming an

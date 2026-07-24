@@ -186,7 +186,7 @@ horde_alloy_pyroscope_receive_port: 4041
 # labeldrop regex alternation. Pyroscope tags are series labels, so any per-request
 # tag is unbounded cardinality: span_id (stamped on every root span by
 # pyroscope-otel's PyroscopeSpanProcessor) alone exhausts the tenant's
-# max_global_series_per_user and fails ingestion for *all* profiles from that tenant.
+# max_global_series_per_tenant and fails ingestion for *all* profiles from that tenant.
 # Dropping it here bounds cardinality without redeploying the applications; span_name
 # is deliberately kept, being bounded by route count. Set to [] to relay verbatim.
 horde_alloy_pyroscope_drop_labels:

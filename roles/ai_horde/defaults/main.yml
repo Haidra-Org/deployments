@@ -164,7 +164,7 @@ ai_horde_pyroscope_enabled: "false"
 # Span-to-flamegraph linking (pyroscope-otel's PyroscopeSpanProcessor). Off, and
 # not merely by inertia: it tags every root span with its span_id, and Pyroscope
 # tags are series labels, so one active series is minted per request. That
-# exhausts the tenant's max_global_series_per_user within minutes at API request
+# exhausts the tenant's max_global_series_per_tenant within minutes at API request
 # rates, at which point Pyroscope rejects *every* profile from the tenant. Only
 # viable for workloads whose root spans are sparse. See also
 # horde_alloy_pyroscope_drop_labels, which strips span_id at the relay.

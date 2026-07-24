@@ -318,7 +318,7 @@ horde_monitoring_grafana_provision_infra_dashboards: true
 # Pinned release tag for the horde-exporters project.
 # In release mode the role downloads the release manifest from this tag and
 # resolves the actual dashboard tarball filename and checksum automatically.
-horde_monitoring_grafana_dashboards_release_version: "v0.2.0"
+horde_monitoring_grafana_dashboards_release_version: "v0.8.3"
 
 # --- release mode settings ---
 # GitHub repository that hosts the releases.

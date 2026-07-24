@@ -824,7 +824,7 @@
 # pyroscope.write while horde_alloy_pyroscope_drop_labels is non-empty. Pyroscope
 # tags are series labels, and pyroscope-otel stamps span_id on every root span --
 # one active series per request, which exhausts the tenant's
-# max_global_series_per_user and fails ingestion for all profiles from that tenant.
+# max_global_series_per_tenant and fails ingestion for all profiles from that tenant.
 - name: Test horde_alloy - Profiles relay cardinality guard
   hosts: testhost
   become: true

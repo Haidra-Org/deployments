@@ -32,7 +32,7 @@ ingester:
 limits:
   ingestion_rate_mb: {{ horde_monitoring_pyroscope_ingestion_rate_mb }}
   ingestion_burst_size_mb: {{ horde_monitoring_pyroscope_ingestion_burst_size_mb }}
-  max_global_series_per_user: {{ horde_monitoring_pyroscope_max_global_series_per_user }}
+  max_global_series_per_tenant: {{ horde_monitoring_pyroscope_max_global_series_per_tenant }}
   compactor_blocks_retention_period: {{ horde_monitoring_pyroscope_retention_period }}
 
 {% if horde_monitoring_mimir_enable_s3 | bool %}
