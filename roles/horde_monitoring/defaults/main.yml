@@ -386,6 +386,20 @@ horde_monitoring_alerting_rules_file: "monitoring-stack.rules"
 # will fall back to on-the-fly queries.
 horde_monitoring_install_recording_rules: true
 horde_monitoring_recording_rules_file: "monitoring-stack.recording.rules"
+
+# Which Mimir tenant each rule group is published to. Groups not listed go to
+# horde_monitoring_infrastructure_tenant_id. Mimir rules evaluate against the
+# tenant they live in (no source_tenants federation is used), so a group must
+# be published where its series are ingested: the horde-exporter series are
+# remote_written to the application/public tenants (see the write_relabel
+# splits in examples/horde_monitoring_stack.yml) and the app OTLP metrics land
+# in the telemetry tenant. Publishing them all to `infrastructure` (the
+# pre-2026-08 behaviour) left HordeAPIDown, HordeNoActiveImageWorkers,
+# HordeExporterDown and the OTLP latency alerts permanently inert.
+horde_monitoring_rule_group_tenants:
+  horde-app-health: "{{ horde_monitoring_application_tenant_id }}"
+  "horde-app:recording": "{{ horde_monitoring_application_tenant_id }}"
+  ai-horde-app-latency: "{{ horde_monitoring_telemetry_tenant_id }}"
 # Job names must match the job_name in your Prometheus scrape_configs
 horde_monitoring_mimir_job_name: "mimir"
 horde_monitoring_s3_job_name: "s3"

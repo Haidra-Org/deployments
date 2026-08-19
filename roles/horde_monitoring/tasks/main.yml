@@ -164,8 +164,19 @@
     - horde_monitoring_install_grafana | bool
     - horde_monitoring_grafana_provision_dashboards | bool
 
+# Tagged so an alerting-only change (rule toggles, thresholds, tenant map) can
+# be rolled out with `--tags alerting_rules` without redeploying the stack.
+# Requires Mimir to already be running (rules are POSTed to the ruler API).
 - name: Deploy monitoring stack alerting rules
-  ansible.builtin.include_tasks: alerting.yml
+  ansible.builtin.include_tasks:
+    file: alerting.yml
+    apply:
+      tags:
+        - alerting_rules
+        - monitoring_rules
+  tags:
+    - alerting_rules
+    - monitoring_rules
   when: horde_monitoring_install_alerting_rules | bool
 
 - name: Configure HAProxy for monitoring

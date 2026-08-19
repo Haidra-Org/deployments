@@ -153,7 +153,13 @@ Cross-signal features auto-configure when components are enabled:
 ## Alerting Coverage
 
 When `horde_monitoring_install_alerting_rules: true`, the role renders
-Prometheus rules for stack self-monitoring. Coverage includes:
+Prometheus rules for stack self-monitoring. Rule groups are published per
+tenant (`horde_monitoring_rule_group_tenants`; app groups to the application
+tenant, OTLP latency to the telemetry tenant, the rest to infrastructure). Some
+groups need scrape jobs that only exist if you configure them: the Prometheus
+self-monitoring group needs `job_name: prometheus` and
+`AlertmanagerNotificationFailing` needs `job_name: alertmanager` (see
+`examples/horde_monitoring_stack.yml`). Coverage includes:
 
 - Core: `Watchdog`, `MimirDown`, `MimirRequestErrors`, `MimirIngestionStalled`, `MimirCompactorFailed`, `MimirCompactorNotRunning`
 - S3 storage: `S3MetricsScrapeDown` (scrape target missing), `S3StorageBackendFailing` (bucket operation errors)

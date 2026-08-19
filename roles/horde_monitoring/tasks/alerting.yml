@@ -130,22 +130,45 @@
       'groups' key for Mimir Ruler API publishing.
   when: horde_monitoring_start_services | bool
 
+# Each group goes to the tenant that ingests the series it queries
+# (horde_monitoring_rule_group_tenants); everything else to infrastructure.
 - name: Publish alerting rule groups to Mimir Ruler API
   ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ horde_monitoring_mimir_port }}/prometheus/config/v1/rules/{{ horde_monitoring_infrastructure_tenant_id }}"
+    url: "http://127.0.0.1:{{ horde_monitoring_mimir_port }}/prometheus/config/v1/rules/{{ _horde_monitoring_rule_group_tenant }}"
     method: POST
     headers:
-      X-Scope-OrgID: "{{ horde_monitoring_infrastructure_tenant_id }}"
+      X-Scope-OrgID: "{{ _horde_monitoring_rule_group_tenant }}"
       Content-Type: application/yaml
     body_format: raw
     body: "{{ item | to_nice_yaml(indent=2) }}"
     status_code: [202, 200]
     return_content: true
+  vars:
+    _horde_monitoring_rule_group_tenant: >-
+      {{ horde_monitoring_rule_group_tenants[item.name] | default(horde_monitoring_infrastructure_tenant_id) }}
   loop: "{{ horde_monitoring_alerting_rule_groups }}"
   loop_control:
-    label: "{{ item.name | default('unnamed-alerting-group') }}"
+    label: "{{ item.name | default('unnamed-alerting-group') }} -> {{ _horde_monitoring_rule_group_tenant }}"
   become: true
   when: horde_monitoring_start_services | bool
+
+# Older role versions published every group to the infrastructure tenant.
+# Remove those copies so a group is not evaluated (inertly) in two tenants.
+- name: Remove rule groups from the infrastructure tenant that now belong elsewhere
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ horde_monitoring_mimir_port }}/prometheus/config/v1/rules/{{ horde_monitoring_infrastructure_tenant_id }}/{{ item.key | urlencode }}"
+    method: DELETE
+    headers:
+      X-Scope-OrgID: "{{ horde_monitoring_infrastructure_tenant_id }}"
+    status_code: [202, 200, 404]
+    return_content: true
+  loop: "{{ horde_monitoring_rule_group_tenants | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  become: true
+  when:
+    - horde_monitoring_start_services | bool
+    - item.value != horde_monitoring_infrastructure_tenant_id
 
 - name: Read rendered recording rules for Mimir Ruler API
   ansible.builtin.slurp:
@@ -179,18 +202,21 @@
 
 - name: Publish recording rule groups to Mimir Ruler API
   ansible.builtin.uri:
-    url: "http://127.0.0.1:{{ horde_monitoring_mimir_port }}/prometheus/config/v1/rules/{{ horde_monitoring_infrastructure_tenant_id }}"
+    url: "http://127.0.0.1:{{ horde_monitoring_mimir_port }}/prometheus/config/v1/rules/{{ _horde_monitoring_rule_group_tenant }}"
     method: POST
     headers:
-      X-Scope-OrgID: "{{ horde_monitoring_infrastructure_tenant_id }}"
+      X-Scope-OrgID: "{{ _horde_monitoring_rule_group_tenant }}"
       Content-Type: application/yaml
     body_format: raw
     body: "{{ item | to_nice_yaml(indent=2) }}"
     status_code: [202, 200]
     return_content: true
+  vars:
+    _horde_monitoring_rule_group_tenant: >-
+      {{ horde_monitoring_rule_group_tenants[item.name] | default(horde_monitoring_infrastructure_tenant_id) }}
   loop: "{{ horde_monitoring_recording_rule_groups }}"
   loop_control:
-    label: "{{ item.name | default('unnamed-recording-group') }}"
+    label: "{{ item.name | default('unnamed-recording-group') }} -> {{ _horde_monitoring_rule_group_tenant }}"
   become: true
   when:
     - horde_monitoring_install_recording_rules | default(true) | bool

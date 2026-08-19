@@ -197,9 +197,9 @@ groups:
       - alert: LokiRequestErrors
         expr: >-
           100 * (
-            sum(rate(horde_monitoring_loki_request_duration_seconds_count{job="{{ horde_monitoring_loki_job_name }}", status_code=~"5.."}[5m]))
+            sum(rate(loki_request_duration_seconds_count{job="{{ horde_monitoring_loki_job_name }}", status_code=~"5.."}[5m]))
           /
-            clamp_min(sum(rate(horde_monitoring_loki_request_duration_seconds_count{job="{{ horde_monitoring_loki_job_name }}"}[5m])), 1)
+            clamp_min(sum(rate(loki_request_duration_seconds_count{job="{{ horde_monitoring_loki_job_name }}"}[5m])), 1)
           ) > 1
         for: 15m
         labels:
@@ -213,7 +213,7 @@ groups:
 
       - alert: LokiIngestionStalled
         expr: >-
-          sum(rate(horde_monitoring_loki_distributor_bytes_received_total{job="{{ horde_monitoring_loki_job_name }}"}[15m])) == 0
+          sum(rate(loki_distributor_bytes_received_total{job="{{ horde_monitoring_loki_job_name }}"}[15m])) == 0
             and
           up{job="{{ horde_monitoring_loki_job_name }}"} == 1
         for: 30m
@@ -249,9 +249,9 @@ groups:
       - alert: TempoRequestErrors
         expr: >-
           100 * (
-            sum(rate(horde_monitoring_tempo_request_duration_seconds_count{job="{{ horde_monitoring_tempo_job_name }}", status_code=~"5.."}[5m]))
+            sum(rate(tempo_request_duration_seconds_count{job="{{ horde_monitoring_tempo_job_name }}", status_code=~"5.."}[5m]))
           /
-            clamp_min(sum(rate(horde_monitoring_tempo_request_duration_seconds_count{job="{{ horde_monitoring_tempo_job_name }}"}[5m])), 1)
+            clamp_min(sum(rate(tempo_request_duration_seconds_count{job="{{ horde_monitoring_tempo_job_name }}"}[5m])), 1)
           ) > 1
         for: 15m
         labels:
@@ -265,7 +265,7 @@ groups:
 
       - alert: TempoIngestionStalled
         expr: >-
-          sum(rate(horde_monitoring_tempo_distributor_spans_received_total{job="{{ horde_monitoring_tempo_job_name }}"}[15m])) == 0
+          sum(rate(tempo_distributor_spans_received_total{job="{{ horde_monitoring_tempo_job_name }}"}[15m])) == 0
             and
           up{job="{{ horde_monitoring_tempo_job_name }}"} == 1
         for: 30m
@@ -301,9 +301,9 @@ groups:
       - alert: PyroscopeRequestErrors
         expr: >-
           100 * (
-            sum(rate(horde_monitoring_pyroscope_request_duration_seconds_count{job="{{ horde_monitoring_pyroscope_job_name }}", status_code=~"5.."}[5m]))
+            sum(rate(pyroscope_request_duration_seconds_count{job="{{ horde_monitoring_pyroscope_job_name }}", status_code=~"5.."}[5m]))
           /
-            clamp_min(sum(rate(horde_monitoring_pyroscope_request_duration_seconds_count{job="{{ horde_monitoring_pyroscope_job_name }}"}[5m])), 1)
+            clamp_min(sum(rate(pyroscope_request_duration_seconds_count{job="{{ horde_monitoring_pyroscope_job_name }}"}[5m])), 1)
           ) > 1
         for: 15m
         labels:
@@ -317,7 +317,7 @@ groups:
 
       - alert: PyroscopeIngestionStalled
         expr: >-
-          sum(rate(horde_monitoring_pyroscope_ingester_ingested_sample_count{job="{{ horde_monitoring_pyroscope_job_name }}"}[15m])) == 0
+          sum(rate(pyroscope_head_received_sample_values_total{job="{{ horde_monitoring_pyroscope_job_name }}"}[15m])) == 0
             and
           up{job="{{ horde_monitoring_pyroscope_job_name }}"} == 1
         for: 30m

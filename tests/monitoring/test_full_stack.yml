@@ -173,6 +173,18 @@
           - "'horde_webhook_outcomes_total' not in (alerting_rules.content | b64decode)"
           - "'horde_job_duration_count' in (alerting_rules.content | b64decode)"
           - "'horde_job_failures_total' not in (alerting_rules.content | b64decode)"
+          # Loki/Tempo/Pyroscope health rules must reference the components'
+          # real metric names; a stray `horde_monitoring_` prefix left the
+          # *RequestErrors / *IngestionStalled rules inert.
+          - "'loki_request_duration_seconds_count' in (alerting_rules.content | b64decode)"
+          - "'loki_distributor_bytes_received_total' in (alerting_rules.content | b64decode)"
+          - "'tempo_request_duration_seconds_count' in (alerting_rules.content | b64decode)"
+          - "'tempo_distributor_spans_received_total' in (alerting_rules.content | b64decode)"
+          - "'pyroscope_request_duration_seconds_count' in (alerting_rules.content | b64decode)"
+          - "'pyroscope_head_received_sample_values_total' in (alerting_rules.content | b64decode)"
+          - "'horde_monitoring_loki_' not in (alerting_rules.content | b64decode)"
+          - "'horde_monitoring_tempo_' not in (alerting_rules.content | b64decode)"
+          - "'horde_monitoring_pyroscope_' not in (alerting_rules.content | b64decode)"
 
     - name: Read rendered recording rules
       ansible.builtin.slurp:

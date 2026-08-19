@@ -89,6 +89,9 @@
     # host.docker.internal on Linux Docker.
     _ai_horde_env_base:
       KUDOS_TRUST_THRESHOLD: "100"
+      # Disable flask-limiter for the lock-convoy A/B pre-side run.
+      # Read by horde/limiter.py:_is_ratelimit_disabled.
+      HORDE_TEST_RATELIMIT_DISABLED: "1"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://alloy:4318"
       PYROSCOPE_SERVER_ADDRESS: "http://pyroscope:4040"
       # Flush metrics every 10 s so the OTLP smoke-test probe doesn't have to

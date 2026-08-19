@@ -69,13 +69,22 @@
 
     # -- Alertmanager (community role, applied directly) --
     # Receives alerts from Prometheus, deduplicates, groups, and routes to
-    # notification channels. See docs/plans/011-alertmanager.md for details.
+    # notification channels. NOTE: the `default` receiver below has NO
+    # integration — until you add one, every alert is silently dropped. See
+    # MONITORING.md "Alerts" for a low-noise Discord routing example.
     alertmanager_version: "0.28.0"
     alertmanager_web_listen_address: "127.0.0.1:9093"
     alertmanager_resolve_timeout: "5m"
     alertmanager_receivers:
       - name: "default"
       # Configure your notification channel here. Uncomment ONE of:
+      #
+      # Discord (Alertmanager >= 0.25; `content` needs >= 0.28 and is the only
+      # field that can @-mention someone):
+      # discord_configs:
+      #   - webhook_url: "{{ vault_alertmanager_discord_webhook }}"
+      #     send_resolved: true
+      #     content: '{% raw %}{{ if eq .Status "firing" }}<@YOUR_DISCORD_USER_ID>{{ end }}{% endraw %}'
       #
       # Slack:
       # slack_configs:
@@ -151,6 +160,17 @@
             regex: horde-exporter
             action: keep
     prometheus_scrape_configs:
+      # Self-scrapes: the role's prometheus-health rules and
+      # AlertmanagerNotificationFailing match job="prometheus" / alertmanager_*
+      # and are inert without these two jobs.
+      - job_name: prometheus
+        static_configs:
+          - targets:
+              - "localhost:9090"
+      - job_name: alertmanager
+        static_configs:
+          - targets:
+              - "localhost:9093"
       - job_name: mimir
         static_configs:
           - targets:

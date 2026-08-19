@@ -95,7 +95,7 @@ Heartbeat       →  http://localhost:7001/api/v2/status/heartbeat
 ```bash
 curl -sf http://localhost:7001/api/v2/status/heartbeat && break
 
-# {"message": "OK", "version": "4.48.3", ...}
+# {"message": "OK", "version": "5.0.2", ...}
 ```
 
 ### Iterate on code

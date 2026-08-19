@@ -249,6 +249,39 @@ Application alerts are templated in
 Mimir ruler API at deploy time. Log-derived alerts are templated in
 `templates/loki-rules.yml.j2` and pushed to the Loki ruler API.
 
+### Where rules are evaluated (tenants)
+
+Mimir evaluates a rule group against the tenant it is published in, and this
+role does not use `source_tenants` federation. `horde_monitoring_rule_group_tenants`
+(defaults/main.yml) maps groups to tenants; unlisted groups go to
+`horde_monitoring_infrastructure_tenant_id`. By default the app groups
+(`horde-app-health`, `horde-app:recording`) go to the application tenant and
+`ai-horde-app-latency` to the telemetry tenant, matching where the example
+playbook remote-writes `horde-exporter` and app OTLP series. If your
+`prometheus_remote_write` relabels route those series elsewhere, override the map
+— a group published to a tenant that does not ingest its series evaluates
+forever without firing.
+
+### Notifying humans
+
+The role ships rules only. Alertmanager is the operator's (see
+`examples/horde_monitoring_stack.yml`), and its example `default` receiver has
+**no integration**: until you add one, every alert is dropped. A low-noise
+shape that has worked for a small volunteer team: route `severity="critical"`
+to a Discord webhook (`discord_configs`, use `content` for an `<@user>` mention),
+send observability-internal criticals (`Pyroscope.*|Tempo.*|Loki.*|Prometheus.*`)
+to a receiver with no integration so they stay dashboard-only, and leave
+warnings/info un-notified. Prometheus needs `prometheus` and `alertmanager`
+self-scrape jobs for the `prometheus-health` group and
+`AlertmanagerNotificationFailing` to evaluate at all.
+
+### Rolling out rule changes only
+
+The alerting include is tagged `alerting_rules` (alias `monitoring_rules`), so a
+threshold/toggle/tenant-map change can be pushed with
+`ansible-playbook ... --tags alerting_rules` against a running stack; the Loki
+log-alert rules are part of the Loki tasks and still need a full role run.
+
 ### Toggles (defaults/main.yml)
 
 | Variable                                               | Default | Effect                                                                                                                                                                                                                                                                                              |
