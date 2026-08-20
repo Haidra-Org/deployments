@@ -319,6 +319,10 @@ services:
     command:
       - "-config.file=/etc/pyroscope/pyroscope.yaml"
       - "-target=all"
+{% if horde_monitoring_pyroscope_gomemlimit | default("") | length > 0 %}
+    environment:
+      - "GOMEMLIMIT={{ horde_monitoring_pyroscope_gomemlimit }}"
+{% endif %}
     ports:
       - "127.0.0.1:{{ horde_monitoring_pyroscope_port }}:{{ horde_monitoring_pyroscope_port }}"
     volumes:

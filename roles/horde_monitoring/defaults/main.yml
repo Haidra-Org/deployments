@@ -552,6 +552,12 @@ horde_monitoring_pyroscope_memberlist_port: 7946
 horde_monitoring_pyroscope_config_dir: "/etc/pyroscope"
 horde_monitoring_pyroscope_data_dir: "/var/lib/pyroscope"
 horde_monitoring_pyroscope_memory_limit: "2g"
+# Go runtime soft memory limit (GOMEMLIMIT format, e.g. "1536MiB", "3GiB").
+# Empty = unset. Without it the Go runtime lets heap peaks run to ~2x live heap,
+# which under a Docker memory limit shows up as cgroup OOM kills during startup
+# replay, compaction, and query spikes rather than as GC backpressure. Set to
+# roughly 75% of horde_monitoring_pyroscope_memory_limit.
+horde_monitoring_pyroscope_gomemlimit: ""
 horde_monitoring_pyroscope_log_level: "warn"
 
 # Multi-tenancy (aligns with Mimir's model — requires X-Scope-OrgID on all requests)

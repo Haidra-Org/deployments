@@ -187,10 +187,14 @@ horde_alloy_pyroscope_receive_port: 4041
 # tag is unbounded cardinality: span_id (stamped on every root span by
 # pyroscope-otel's PyroscopeSpanProcessor) alone exhausts the tenant's
 # max_global_series_per_tenant and fails ingestion for *all* profiles from that tenant.
-# Dropping it here bounds cardinality without redeploying the applications; span_name
-# is deliberately kept, being bounded by route count. Set to [] to relay verbatim.
+# trace_id is stamped by the same processor and is equally per-request: observed in
+# production minting ~18k active series in two hours, ballooning the Pyroscope
+# ingester head until the container OOMed. Dropping both here bounds cardinality
+# without redeploying the applications; span_name is deliberately kept, being
+# bounded by route count. Set to [] to relay verbatim.
 horde_alloy_pyroscope_drop_labels:
   - "span_id"
+  - "trace_id"
 
 # Batch processor tuning
 horde_alloy_trace_batch_timeout: "5s"
