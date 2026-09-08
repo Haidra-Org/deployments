@@ -127,6 +127,7 @@
           - "'HORDE_MODEL_REFERENCE_REPLICATE_MODE=PRIMARY' in (_env_content.content | b64decode)"
           - "'HORDE_MODEL_REFERENCE_CANONICAL_FORMAT=v2' in (_env_content.content | b64decode)"
           - "'HORDE_MODEL_REFERENCE_MAKE_FOLDERS=true' in (_env_content.content | b64decode)"
+          - "'HORDE_MODEL_REFERENCE_LICENSING__EDITOR_IDS=[]' in (_env_content.content | b64decode)"
           - "'HORDE_MODEL_REFERENCE_GITHUB_SEED_ENABLED=false' in (_env_content.content | b64decode)"
           - "'HORDE_MODEL_REFERENCE_PENDING_QUEUE__ENABLED=true' in (_env_content.content | b64decode)"
           - "'HORDE_MODEL_REFERENCE_PENDING_QUEUE_ENABLED=' not in (_env_content.content | b64decode)"

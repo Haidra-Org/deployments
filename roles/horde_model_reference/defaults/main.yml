@@ -102,6 +102,9 @@ horde_model_reference_enable_github_fallback: true
 # CORS (same-origin only).  Example: ["https://aihorde.net"]
 horde_model_reference_cors_allowed_origins: []
 
+# Horde user IDs allowed to edit model licensing metadata.
+horde_model_reference_licensing_editor_ids: []
+
 # ── Pending queue (PRIMARY only) ───────────────────────────────────────────────
 # Enable the in-memory write-pending queue so that model updates from
 # concurrent writers are serialized and not dropped under load.

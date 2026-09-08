@@ -119,6 +119,7 @@ PRIMARY URL **must** include the `/api` suffix.
 | `horde_model_reference_make_folders` | `true` | Create `/data` hierarchy on startup |
 | `horde_model_reference_enable_github_fallback` | `true` | REPLICA: fall back to GitHub |
 | `horde_model_reference_cors_allowed_origins` | `[]` | CORS allowed origins list |
+| `horde_model_reference_licensing_editor_ids` | `[]` | Horde user IDs allowed to edit licensing metadata (`HORDE_MODEL_REFERENCE_LICENSING__EDITOR_IDS`) |
 | `horde_model_reference_pending_queue_enabled` | `true` | PRIMARY write-pending queue enable flag (`HORDE_MODEL_REFERENCE_PENDING_QUEUE__ENABLED`) |
 | `horde_model_reference_pending_queue_requestor_ids` | `[]` | Allowed requestor Horde user IDs |
 | `horde_model_reference_pending_queue_approver_ids` | `[]` | Allowed approver Horde user IDs |

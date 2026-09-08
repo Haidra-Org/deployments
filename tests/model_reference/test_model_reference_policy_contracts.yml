@@ -162,6 +162,7 @@
     - name: Assert env template renders exposed tuning keys
       ansible.builtin.assert:
         that:
+          - "'HORDE_MODEL_REFERENCE_LICENSING__EDITOR_IDS' in (_env_tpl.content | b64decode)"
           - "'HORDE_MODEL_REFERENCE_CACHE_TTL_SECONDS' in (_env_tpl.content | b64decode)"
           - "'HORDE_MODEL_REFERENCE_PRIMARY_API_TIMEOUT' in (_env_tpl.content | b64decode)"
           - "'HORDE_MODEL_REFERENCE_HORDE_API_TIMEOUT' in (_env_tpl.content | b64decode)"
