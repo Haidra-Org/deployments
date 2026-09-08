@@ -1040,11 +1040,15 @@ groups:
   - name: host-disk-projections
     rules:
       - alert: HostOutOfInodes
+        # vfat (EFI system partitions) reports a tiny fixed root-directory
+        # entry table as its inode count, so /boot/efi sits at "90% used"
+        # forever; iso9660/squashfs are read-only images. None can fill up
+        # from file creation, which is what this rule is about.
         expr: >-
           (
-            node_filesystem_files_free{fstype!~"tmpfs|overlay"}
+            node_filesystem_files_free{fstype!~"tmpfs|overlay|vfat|iso9660|squashfs"}
           /
-            clamp_min(node_filesystem_files{fstype!~"tmpfs|overlay"}, 1)
+            clamp_min(node_filesystem_files{fstype!~"tmpfs|overlay|vfat|iso9660|squashfs"}, 1)
           ) < 0.10
         for: 10m
         labels:

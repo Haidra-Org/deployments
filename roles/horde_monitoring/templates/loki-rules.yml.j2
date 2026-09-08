@@ -66,12 +66,42 @@ groups:
             One or more Redis cluster members appear unreachable. Cache
             inconsistency risk increases until membership stabilizes.
 
+      - alert: HordeRedisUnreachableWidespread
+        # Several backend hosts losing the primary redis at once is a datastore
+        # partition, not one flaky host: every request path needs redis, so
+        # those nodes serve nothing until it returns (and, with the heartbeat
+        # reporting redis reachability, the edge pulls them from rotation).
+        # The per-host probe logs this line every 10 s while the server is
+        # down, so two minutes at >= 2 hosts is a stable signal (the fleet is
+        # five hosts; on 2026-09-08 the longer of the two partition windows
+        # hit exactly two). The warning rule above stays for the single-host
+        # / flapping case.
+        expr: |
+          count(
+            sum by (instance) (rate({app="ai-horde"} |~ "appears unreachable" [2m])) > 0
+          ) >= 2
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ '{{' }} $value {{ '}}' }} backend hosts cannot reach the primary redis"
+          description: >-
+            Two or more AI-Horde hosts are logging "redis server appears
+            unreachable" for the primary. Treat as a datastore partition or a
+            redis outage: check the database host and the WireGuard peer
+            alerts before the individual nodes.
+
       - alert: HordeRedisQuorumChanged
+        # Warning, not critical: the forced-quorum owner overwrites the key on
+        # its next 1 s tick, so an unexpected claim by another node is
+        # self-healing noise unless the owner is actually gone — and that case
+        # is covered by the host/tunnel alerts, not by this log line. A change
+        # storm still points at a stalled redis path (see the redis rules).
         expr: |
           sum(rate({app="ai-horde"} |~ "Quorum changed to port" [5m])) > 0
         for: 1m
         labels:
-          severity: critical
+          severity: warning
         annotations:
           summary: "AI-Horde background-job quorum leader changed"
           description: >-
