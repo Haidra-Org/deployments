@@ -974,8 +974,13 @@ groups:
             for the killed process: dmesg | grep -i oom
 
       - alert: HostSystemdServiceFailed
+        # Units matching horde_monitoring_systemd_failed_ignore_units are left
+        # out: a unit that has been "failed" since boot for a year is not a
+        # signal, and one such unit fleet-wide (ifupdown's networking.service on
+        # images that configure eth0 elsewhere) kept this alert permanently lit,
+        # which also makes it useless as a dashboard annotation.
         expr: >-
-          node_systemd_unit_state{state="failed"} == 1
+          node_systemd_unit_state{state="failed"{% if (horde_monitoring_systemd_failed_ignore_units | default('')) | length > 0 %}, name!~{{ horde_monitoring_systemd_failed_ignore_units | to_json }}{% endif %}} == 1
         for: 5m
         labels:
           severity: warning

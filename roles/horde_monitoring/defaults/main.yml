@@ -370,6 +370,13 @@ horde_monitoring_ruler_alertmanager_url: ""
 # The rules file is placed in the Prometheus rules directory and auto-loaded.
 # Set to false if you provide your own rules or don't use Prometheus alerting.
 horde_monitoring_install_alerting_rules: true
+# Regex of systemd unit names (as node_exporter's `name` label, e.g.
+# "networking.service|swapfile.swap") that HostSystemdServiceFailed ignores.
+# Empty = alert on every failed unit. Use for units that are known-dead on a
+# platform image and cannot be fixed without a reboot, never to hide a real
+# service; note the reason next to the value in your inventory.
+horde_monitoring_systemd_failed_ignore_units: ""
+
 # Host-level disk alerts (HostDiskUsageCritical, HostDiskUsageHigh) depend on
 # node_filesystem_* metrics being present in Prometheus. If your Prometheus
 # setup does not ingest host filesystem metrics, set this to false.

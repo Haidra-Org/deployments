@@ -171,7 +171,7 @@ self-monitoring group needs `job_name: prometheus` and
 - Optional Loki: `LokiDown`, `LokiRequestErrors`, `LokiIngestionStalled`
 - Optional Tempo: `TempoDown`, `TempoRequestErrors`, `TempoIngestionStalled`
 - Optional Pyroscope: `PyroscopeDown`, `PyroscopeRequestErrors`, `PyroscopeIngestionStalled`
-- Host resource: `HostHighCpuLoad`, `HostHighMemoryUsage`, `HostOomKillDetected`, `HostSystemdServiceFailed`, `HostClockSkew`, `HostSwapFillingUp`, `HostCpuStealHigh`, `HostOutOfInodes`, `HostDiskWillFillIn24h`
+- Host resource: `HostHighCpuLoad`, `HostHighMemoryUsage`, `HostOomKillDetected`, `HostSystemdServiceFailed` (units matching `horde_monitoring_systemd_failed_ignore_units` are excluded), `HostClockSkew`, `HostSwapFillingUp`, `HostCpuStealHigh`, `HostOutOfInodes`, `HostDiskWillFillIn24h`
 - Loki log alerts (`ai-horde-app` tenant, `loki-rules.yml`): `HordeMaintenanceModeEntryLog`, `HordeWorkerSuspicionSpike`, `HordeFlaskCacheFailing`, `HordeRedisUnreachableLog` (warning, one host), `HordeRedisUnreachableWidespread` (critical, two or more hosts logging redis loss for 2m — a datastore partition), `HordeRedisQuorumChanged` (warning; the forced owner reclaims the key within a second), `HordeLimiterCacheFailing`
 - Host disk alerts (require `node_filesystem_*` metrics and
   `horde_monitoring_host_filesystem_metrics_available: true`):
