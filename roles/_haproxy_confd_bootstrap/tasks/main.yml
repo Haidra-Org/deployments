@@ -18,6 +18,9 @@
     - /etc/haproxy/conf.d
     - /etc/systemd/system/haproxy.service.d
 
+# Clearing ExecReload= drops every reload command of the packaged unit, so both
+# are restated: the config check, then the USR2 that makes the master load it.
+# Without the second line `systemctl reload haproxy` only validates.
 - name: Configure HAProxy to load from conf.d (override.conf)
   ansible.builtin.copy:
     dest: /etc/systemd/system/haproxy.service.d/override.conf
@@ -29,6 +32,7 @@
       ExecStartPre=/usr/sbin/haproxy -Ws -f $CONFIG -f /etc/haproxy/conf.d/ -c -q $EXTRAOPTS
       ExecStart=/usr/sbin/haproxy -Ws -f $CONFIG -f /etc/haproxy/conf.d/ -p $PIDFILE $EXTRAOPTS
       ExecReload=/usr/sbin/haproxy -Ws -f $CONFIG -f /etc/haproxy/conf.d/ -c -q $EXTRAOPTS
+      ExecReload=/bin/kill -USR2 $MAINPID
     mode: "0644"
   become: true
   notify:

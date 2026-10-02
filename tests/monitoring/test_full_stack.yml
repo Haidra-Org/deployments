@@ -331,9 +331,11 @@
           - "'ExecStart=' in (_haproxy_override_content.content | b64decode)"
           - "'/etc/haproxy/conf.d/' in (_haproxy_override_content.content | b64decode)"
           - "'Environment=' not in (_haproxy_override_content.content | b64decode)"
+          - "'ExecReload=/bin/kill -USR2 $MAINPID' in (_haproxy_override_content.content | b64decode)"
         fail_msg: >-
           HAProxy conf.d bootstrap must create the conf.d directory, write a
-          systemd override using ExecStart (not Environment), and reference conf.d.
+          systemd override using ExecStart (not Environment), reference conf.d,
+          and keep the USR2 reload signal.
 
     - name: Assert monitoring HAProxy backends are configured via conf.d
       ansible.builtin.assert:
