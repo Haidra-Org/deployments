@@ -85,7 +85,7 @@
     group: root
     mode: "0644"
   become: true
-  notify: Restart monitoring stack
+  # Rules are published below via the Ruler API; no container restart is needed.
 
 - name: Template monitoring stack recording rules
   ansible.builtin.template:
@@ -95,7 +95,6 @@
     group: root
     mode: "0644"
   become: true
-  notify: Restart monitoring stack
   when: horde_monitoring_install_recording_rules | default(true) | bool
 
 - name: Remove recording rules file when disabled
@@ -103,7 +102,6 @@
     path: "{{ horde_monitoring_alerting_rules_dir }}/{{ horde_monitoring_recording_rules_file }}"
     state: absent
   become: true
-  notify: Restart monitoring stack
   when: not (horde_monitoring_install_recording_rules | default(true) | bool)
 
 - name: Read rendered alerting rules for Mimir Ruler API

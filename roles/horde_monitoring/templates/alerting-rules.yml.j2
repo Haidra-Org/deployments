@@ -156,18 +156,18 @@ groups:
       - alert: S3StorageBackendFailing
         expr: >-
           (
-            sum(rate(thanos_objstore_bucket_operation_failures_total{job="{{ horde_monitoring_mimir_job_name }}"}[5m]))
+            sum(increase(thanos_objstore_bucket_operation_failures_total{job="{{ horde_monitoring_mimir_job_name }}"}[5m]))
           /
-            clamp_min(sum(rate(thanos_objstore_bucket_operations_total{job="{{ horde_monitoring_mimir_job_name }}"}[5m])), 1)
+            clamp_min(sum(increase(thanos_objstore_bucket_operations_total{job="{{ horde_monitoring_mimir_job_name }}"}[5m])), 1)
           ) > 0.1
-        for: 10m
+        for: 2m
         labels:
           severity: critical
         annotations:
           summary: "Mimir is seeing a high S3 operation failure rate"
           description: >-
             More than 10% of Mimir's S3 bucket operations have failed over the
-            past 5 minutes (sustained for 10 minutes). Mimir cannot reliably
+            past 5 minutes (sustained for 2 minutes). Mimir cannot reliably
             store or retrieve metric blocks. Inspect the storage backend
             directly (not its metrics proxy): storage service logs, disk
             capacity, and network reachability between Mimir and the S3

@@ -40,6 +40,10 @@ garage_compose_dir: "/opt/garage"
 
 # Container resource limits
 garage_memory_limit: "512m"
+# S3 connections share the process descriptor budget with the metadata engine.
+# Docker's default soft limit of 1024 can kill only the S3 listener, leaving
+# the container and admin API running (production incident 2026-10-12).
+garage_nofile_limit: 65536
 
 # S3 credentials used by S3 API clients.
 # garage_access_key is the key ID (format: GK + 24 hex chars), not the display name.

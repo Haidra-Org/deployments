@@ -271,6 +271,15 @@ The audience filename convention for app dashboards is documented in
 | `horde_monitoring_tempo_http_port`                 | `3200`                | HTTP API port                |
 | `horde_monitoring_tempo_trace_retention`           | `168h`                | Trace retention (7 days)     |
 | `horde_monitoring_tempo_metrics_generator_enabled` | `true`                | Generate metrics from traces |
+| `horde_monitoring_tempo_backend_max_workers` | `400` | Maximum block lookup workers; independent of polling/compaction |
+| `horde_monitoring_tempo_backend_queue_depth` | `20000` | Capacity for outstanding block lookup jobs |
+| `horde_monitoring_tempo_cache_roles` | `[]` | Opt-in cache roles, e.g. `[bloom, parquet-footer]` |
+| `horde_monitoring_tempo_cache_memcached_addresses` | `""` | Cache service addresses, e.g. `dns+memcached:11211` |
+| `horde_monitoring_tempo_cache_memcached_timeout` | `500ms` | Cache operation timeout |
+| `horde_monitoring_tempo_cache_memcached_max_idle_conns` | `16` | Idle cache connections |
+| `horde_monitoring_tempo_cache_memcached_max_item_size` | `5242880` | Maximum cache item size in bytes |
+| `horde_monitoring_tempo_cache_ttl` | `168h` | Cache item TTL |
+| `horde_monitoring_tempo_read_tuning_textfile_dir` | `""` | Optional node_exporter directory for configured cache/worker intent metrics |
 
 ### Pyroscope (Enabled by default)
 

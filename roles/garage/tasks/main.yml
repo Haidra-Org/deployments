@@ -125,6 +125,8 @@
   notify: Restart garage
 
 - name: Template Docker Compose for Garage
+  tags:
+    - garage_limits
   ansible.builtin.template:
     src: docker-compose.garage.yml.j2
     dest: "{{ garage_compose_dir }}/docker-compose.yml"

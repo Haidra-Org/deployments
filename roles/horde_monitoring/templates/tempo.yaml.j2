@@ -23,13 +23,40 @@ ingester:
   max_block_bytes: {{ horde_monitoring_tempo_ingester_max_block_bytes }}
   max_block_duration: {{ horde_monitoring_tempo_ingester_max_block_duration }}
 
+querier:
+  max_concurrent_queries: {{ horde_monitoring_tempo_max_concurrent_queries }}
+
+query_frontend:
+  trace_by_id:
+    concurrent_shards: {{ horde_monitoring_tempo_trace_concurrent_shards }}
+  search:
+    concurrent_jobs: {{ horde_monitoring_tempo_search_concurrent_jobs }}
+
 compactor:
   compaction:
     block_retention: {{ horde_monitoring_tempo_trace_retention }}
 
+{% if horde_monitoring_tempo_cache_roles | length > 0 %}
+cache:
+  caches:
+    - roles:
+{% for role in horde_monitoring_tempo_cache_roles %}
+        - {{ role | to_json }}
+{% endfor %}
+      memcached:
+        addresses: {{ horde_monitoring_tempo_cache_memcached_addresses | to_json }}
+        timeout: {{ horde_monitoring_tempo_cache_memcached_timeout }}
+        max_idle_conns: {{ horde_monitoring_tempo_cache_memcached_max_idle_conns }}
+        max_item_size: {{ horde_monitoring_tempo_cache_memcached_max_item_size }}
+        ttl: {{ horde_monitoring_tempo_cache_ttl }}
+{% endif %}
+
 {% if horde_monitoring_mimir_enable_s3 | bool %}
 storage:
   trace:
+    pool:
+      max_workers: {{ horde_monitoring_tempo_backend_max_workers }}
+      queue_depth: {{ horde_monitoring_tempo_backend_queue_depth }}
     backend: s3
     s3:
       endpoint: {{ horde_monitoring_s3_endpoint }}
@@ -46,6 +73,9 @@ storage:
 {% else %}
 storage:
   trace:
+    pool:
+      max_workers: {{ horde_monitoring_tempo_backend_max_workers }}
+      queue_depth: {{ horde_monitoring_tempo_backend_queue_depth }}
     backend: local
     wal:
       path: /var/tempo/wal

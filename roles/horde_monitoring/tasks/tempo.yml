@@ -2,6 +2,32 @@
 # Deploy Tempo distributed tracing backend via Docker Compose
 # Tempo runs as part of the monitoring Docker Compose stack
 
+- name: Validate Tempo block worker limits
+  ansible.builtin.assert:
+    that:
+      - horde_monitoring_tempo_backend_max_workers | int > 0
+      - horde_monitoring_tempo_backend_queue_depth | int >= horde_monitoring_tempo_backend_max_workers | int
+    fail_msg: "Tempo block workers must be positive and queue depth must be at least the worker count."
+
+- name: Validate Tempo cache roles
+  ansible.builtin.assert:
+    that:
+      - horde_monitoring_tempo_cache_roles is sequence
+      - horde_monitoring_tempo_cache_roles is not string
+      - horde_monitoring_tempo_cache_roles | difference(['bloom', 'parquet-footer', 'parquet-column-idx', 'parquet-offset-idx', 'trace-id-index', 'frontend-search', 'parquet-page']) | length == 0
+      - horde_monitoring_tempo_cache_roles | unique | length == horde_monitoring_tempo_cache_roles | length
+    fail_msg: "Tempo cache roles must be a list of unique roles supported by the pinned Tempo version."
+
+- name: Validate Tempo Memcached configuration when caching is enabled
+  ansible.builtin.assert:
+    that:
+      - horde_monitoring_tempo_cache_memcached_addresses | trim | length > 0
+      - horde_monitoring_tempo_cache_memcached_max_idle_conns | int > 0
+      - horde_monitoring_tempo_cache_memcached_max_item_size | int > 0
+      - horde_monitoring_tempo_cache_memcached_addresses != 'dns+memcached:11211' or horde_monitoring_mimir_enable_memcached | bool
+    fail_msg: "Tempo caching requires a Memcached address, positive connection/item limits, and the Compose Memcached service enabled when using its address."
+  when: horde_monitoring_tempo_cache_roles | length > 0
+
 - name: Check for stale Tempo config directory-as-file
   ansible.builtin.stat:
     path: "{{ horde_monitoring_tempo_config_dir }}/tempo.yaml"
@@ -50,5 +76,24 @@
     group: "10001"
     mode: "0640"
     backup: true
+    validate: >-
+      docker run --rm --network none --user 0:0 --entrypoint /tempo
+      -v %s:/etc/tempo/tempo.yaml:ro {{ horde_monitoring_tempo_image }}
+      -config.file=/etc/tempo/tempo.yaml -config.verify=true
   become: true
-  notify: Restart monitoring stack
+  notify: Restart tempo
+
+- name: Export configured Tempo cache and worker intent
+  ansible.builtin.copy:
+    dest: "{{ horde_monitoring_tempo_read_tuning_textfile_dir }}/tempo_read_tuning.prom"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Configured intent; not proof that the cache is functioning.
+      horde_tempo_cache_expected {{ 1 if horde_monitoring_tempo_cache_roles | length > 0 else 0 }}
+      horde_tempo_backend_max_workers {{ horde_monitoring_tempo_backend_max_workers }}
+  become: true
+  when:
+    - horde_monitoring_start_services | bool
+    - horde_monitoring_tempo_read_tuning_textfile_dir | length > 0

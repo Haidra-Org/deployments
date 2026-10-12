@@ -16,6 +16,14 @@
   changed_when: true
   when: horde_monitoring_start_services | bool
 
+- name: Restart tempo
+  ansible.builtin.command:
+    cmd: docker compose up -d --no-deps --force-recreate tempo
+    chdir: "{{ horde_monitoring_mimir_compose_dir }}"
+  become: true
+  changed_when: true
+  when: horde_monitoring_start_services | bool
+
 # Prometheus is deployed by a separate role (prometheus.prometheus) and may
 # not be installed or running when this handler fires.  failed_when: false
 # prevents the handler from breaking plays where Prometheus isn't present yet.

@@ -18,6 +18,10 @@ services:
       - "{{ garage_admin_bind_address }}:{{ garage_admin_port }}:3903"
       - "127.0.0.1:{{ garage_rpc_port }}:3901"
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: {{ garage_nofile_limit }}
+        hard: {{ garage_nofile_limit }}
     deploy:
       resources:
         limits:

@@ -518,6 +518,28 @@ horde_monitoring_tempo_data_dir: "/var/lib/tempo"
 horde_monitoring_tempo_memory_limit: "2g"
 horde_monitoring_tempo_log_level: "warn"
 
+# Bound trace lookup fan-out against shared object storage. Keep explicit so
+# operators can tune throughput without changing the configuration template.
+horde_monitoring_tempo_max_concurrent_queries: 8
+horde_monitoring_tempo_trace_concurrent_shards: 4
+horde_monitoring_tempo_search_concurrent_jobs: 8
+
+# Keep Tempo's upstream block-worker defaults unless inventory opts into a cap.
+# This pool limits block lookup jobs; polling/compaction have separate limits.
+horde_monitoring_tempo_backend_max_workers: 400
+horde_monitoring_tempo_backend_queue_depth: 20000
+
+# Opt-in object-storage caches. Metadata roles avoid caching full Parquet pages
+# into a cache shared with Mimir. Use dns+host:port for Docker DNS discovery.
+horde_monitoring_tempo_cache_roles: []
+horde_monitoring_tempo_cache_memcached_addresses: ""
+horde_monitoring_tempo_cache_memcached_timeout: "500ms"
+horde_monitoring_tempo_cache_memcached_max_idle_conns: 16
+horde_monitoring_tempo_cache_memcached_max_item_size: 5242880
+horde_monitoring_tempo_cache_ttl: "168h"
+# Optional node_exporter textfile marker for configured cache/worker intent.
+horde_monitoring_tempo_read_tuning_textfile_dir: ""
+
 # S3 bucket for Tempo trace blocks
 horde_monitoring_tempo_traces_bucket: "tempo-traces"
 

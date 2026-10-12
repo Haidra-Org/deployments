@@ -130,7 +130,13 @@
   when: horde_monitoring_install_loki | bool
 
 - name: Deploy Tempo distributed tracing backend
-  ansible.builtin.include_tasks: tempo.yml
+  ansible.builtin.include_tasks:
+    file: tempo.yml
+    apply:
+      tags:
+        - tempo
+  tags:
+    - tempo
   when: horde_monitoring_install_tempo | bool
 
 - name: Deploy Pyroscope continuous profiling backend
