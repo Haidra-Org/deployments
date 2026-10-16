@@ -24,6 +24,17 @@
   changed_when: true
   when: horde_monitoring_start_services | bool
 
+- name: Reload Grafana datasources
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ horde_monitoring_grafana_port }}/api/admin/provisioning/datasources/reload"
+    method: POST
+    user: "{{ horde_monitoring_grafana_admin_user }}"
+    password: "{{ horde_monitoring_grafana_admin_password }}"
+    force_basic_auth: true
+    status_code: 200
+  no_log: true
+  when: horde_monitoring_start_services | bool
+
 # Prometheus is deployed by a separate role (prometheus.prometheus) and may
 # not be installed or running when this handler fires.  failed_when: false
 # prevents the handler from breaking plays where Prometheus isn't present yet.

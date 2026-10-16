@@ -97,6 +97,7 @@ complete example playbook.
 | `horde_alloy_mimir_endpoint`       | `""`    | Mimir remote_write URL (required if metrics enabled) |
 | `horde_alloy_collect_metrics`      | `true`  | Enable host metrics collection                       |
 | `horde_alloy_scrape_interval`      | `15s`   | Metrics scrape interval                              |
+| `horde_alloy_instance_label`       | `{{ ansible_hostname }}` | `instance` label on every metric and log stream; set to the inventory name when it differs from the OS hostname |
 | `horde_alloy_external_labels`      | `{}`    | Extra labels added to all metrics                    |
 | `horde_alloy_extra_scrape_targets` | `[]`    | Additional scrape targets (list of `{job, targets}`) |
 | `horde_alloy_unix_exporter_set_collectors` | `[]` | Replace default collector set with an explicit list |

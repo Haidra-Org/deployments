@@ -170,6 +170,16 @@
     - horde_monitoring_install_grafana | bool
     - horde_monitoring_grafana_provision_dashboards | bool
 
+- name: Reconcile Grafana datasource access
+  ansible.builtin.include_tasks:
+    file: grafana_datasources.yml
+    apply:
+      tags:
+        - grafana_datasources
+  tags:
+    - grafana_datasources
+  when: horde_monitoring_install_grafana | bool
+
 # Tagged so an alerting-only change (rule toggles, thresholds, tenant map) can
 # be rolled out with `--tags alerting_rules` without redeploying the stack.
 # Requires Mimir to already be running (rules are POSTed to the ruler API).

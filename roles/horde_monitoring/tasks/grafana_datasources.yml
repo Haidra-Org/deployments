@@ -1,0 +1,43 @@
+---
+# Narrow reconciliation for an existing Grafana deployment; no stack restart.
+- name: Check public Grafana organization for datasource provisioning
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ horde_monitoring_grafana_port }}/api/orgs/{{ horde_monitoring_grafana_public_org_id }}"
+    user: "{{ horde_monitoring_grafana_admin_user }}"
+    password: "{{ horde_monitoring_grafana_admin_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: horde_monitoring__datasource_public_org
+  no_log: true
+  changed_when: false
+  when:
+    - horde_monitoring_grafana_anonymous_enabled | bool
+    - horde_monitoring_start_services | bool
+
+- name: Set public org flag for datasource reconciliation
+  ansible.builtin.set_fact:
+    horde_monitoring__public_org_exists: >-
+      {{ (not (horde_monitoring_start_services | bool) and
+          horde_monitoring_grafana_anonymous_enabled | bool) or
+         (horde_monitoring__datasource_public_org.status | default(0) == 200) }}
+
+- name: Require existing public organization for a narrow datasource deployment
+  ansible.builtin.assert:
+    that:
+      - horde_monitoring__public_org_exists | bool
+    fail_msg: "Create the public organization with a full Grafana deployment before using grafana_datasources."
+  when:
+    - horde_monitoring_grafana_anonymous_enabled | bool
+    - horde_monitoring_start_services | bool
+
+- name: Reconcile Grafana datasource provisioning file
+  ansible.builtin.template:
+    src: grafana-datasources.yml.j2
+    dest: "{{ horde_monitoring_grafana_provisioning_dir }}/datasources/mimir.yml"
+    owner: "472"
+    group: "472"
+    mode: "0600"
+    backup: true
+  become: true
+  no_log: true
+  notify: Reload Grafana datasources

@@ -179,6 +179,17 @@ Garage and managed external S3 a variable-only change.
 
 ### Grafana
 
+Anonymous dashboards retain the public Mimir datasource. Raw telemetry
+datasources are disabled by default; `horde_monitoring_grafana_public_loki_enabled`,
+`horde_monitoring_grafana_public_tempo_enabled`, and
+`horde_monitoring_grafana_public_pyroscope_enabled` independently opt them in.
+Disabled public datasources are explicitly removed with `deleteDatasources`,
+including copies provisioned by previous versions. Internal-org datasources
+remain available. Use `--tags grafana_datasources` against an existing deployment
+to reconcile the datasource file and reload it through Grafana's admin API
+without restarting the monitoring stack. Changes to dashboard providers still
+use the normal Grafana deployment workflow.
+
 | Variable                       | Default                  | Description                                         |
 | ------------------------------ | ------------------------ | --------------------------------------------------- |
 | `horde_monitoring_grafana_image`                | `grafana/grafana:12.4.1` | Grafana image (pinned)                              |

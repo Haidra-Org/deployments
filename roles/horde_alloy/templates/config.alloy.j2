@@ -76,7 +76,7 @@ prometheus.scrape {{ target.job | to_json }} {
 {% endfor %}
 prometheus.remote_write "mimir" {
   external_labels = {
-    "instance" = {{ ansible_hostname | to_json }},
+    "instance" = {{ horde_alloy_instance_label | to_json }},
 {% for k, v in horde_alloy_external_labels.items() %}
     {{ k | to_json }} = {{ v | to_json }},
 {% endfor %}
@@ -297,7 +297,7 @@ loki.source.journal "systemd" {
   relabel_rules = loki.relabel.journal.rules
   labels        = {
     "source" = "journal",
-    "instance" = {{ ansible_hostname | to_json }},
+    "instance" = {{ horde_alloy_instance_label | to_json }},
 {% for k, v in horde_alloy_log_labels.items() %}
     {{ k | to_json }} = {{ v | to_json }},
 {% endfor %}
@@ -311,7 +311,7 @@ local.file_match "log_files" {
 {% for pattern in horde_alloy_collect_log_files %}
     {
       "__path__"  = {{ pattern | to_json }},
-      "instance"  = {{ ansible_hostname | to_json }},
+      "instance"  = {{ horde_alloy_instance_label | to_json }},
       "source"    = "file",
 {% for k, v in horde_alloy_log_labels.items() %}
       {{ k | to_json }} = {{ v | to_json }},
@@ -364,7 +364,7 @@ loki.source.docker "containers" {
   forward_to = [loki.process.docker.receiver]
   labels     = {
     "source" = "docker",
-    "instance" = {{ ansible_hostname | to_json }},
+    "instance" = {{ horde_alloy_instance_label | to_json }},
 {% for k, v in horde_alloy_log_labels.items() %}
     {{ k | to_json }} = {{ v | to_json }},
 {% endfor %}
@@ -443,7 +443,7 @@ loki.write "loki" {
   }
 
   external_labels = {
-    "instance" = {{ ansible_hostname | to_json }},
+    "instance" = {{ horde_alloy_instance_label | to_json }},
 {% for k, v in horde_alloy_log_labels.items() %}
     {{ k | to_json }} = {{ v | to_json }},
 {% endfor %}
@@ -471,7 +471,7 @@ loki.write "loki_docker" {
   }
 
   external_labels = {
-    "instance" = {{ ansible_hostname | to_json }},
+    "instance" = {{ horde_alloy_instance_label | to_json }},
 {% for k, v in horde_alloy_log_labels.items() %}
     {{ k | to_json }} = {{ v | to_json }},
 {% endfor %}

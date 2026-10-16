@@ -73,8 +73,15 @@ horde_alloy_basic_auth_password: "changeme-alloy"
 horde_alloy_collect_metrics: true
 horde_alloy_scrape_interval: "15s"
 
+# Value of the `instance` label stamped on every metric and log stream this
+# host sends. Defaults to the machine hostname; override it when the inventory
+# name differs from the hostname (e.g. a host named "stablehorde" in the OS but
+# "stablehorde_orig" in inventory), so dashboards and alert annotations that
+# correlate node metrics, HAProxy stats, Loki streams and app telemetry by host
+# name see one name for one host.
+horde_alloy_instance_label: "{{ ansible_hostname }}"
 # Additional labels added to all metrics from this host.
-# Merged with auto-detected instance label (hostname).
+# Merged with the instance label above.
 # Example: { "environment": "production", "region": "us-east-1" }
 horde_alloy_external_labels: {}
 # Extra Prometheus scrape targets on the local host.

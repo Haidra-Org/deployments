@@ -3,6 +3,29 @@
 
 apiVersion: 1
 
+{% set public_loki = horde_monitoring_grafana_anonymous_enabled | bool and horde_monitoring_install_loki | bool and horde_monitoring_grafana_public_loki_enabled | bool %}
+{% set public_tempo = horde_monitoring_grafana_anonymous_enabled | bool and horde_monitoring_install_tempo | bool and horde_monitoring_grafana_public_tempo_enabled | bool %}
+{% set public_pyroscope = horde_monitoring_grafana_anonymous_enabled | bool and horde_monitoring_install_pyroscope | bool and horde_monitoring_grafana_public_pyroscope_enabled | bool %}
+{# Explicit cleanup also removes datasources provisioned by earlier versions.
+   Scope deletion to the public org; internal authenticated access is retained. #}
+{% if not (public_loki and public_tempo and public_pyroscope) %}
+deleteDatasources:
+{% if not public_loki %}
+  - name: Loki ({{ horde_monitoring_public_datasource_name }})
+    orgId: {{ horde_monitoring_grafana_public_org_id }}
+{% endif %}
+{% if not public_tempo %}
+  - name: Tempo
+    orgId: {{ horde_monitoring_grafana_public_org_id }}
+{% endif %}
+{% if not public_pyroscope %}
+  - name: Pyroscope ({{ horde_monitoring_public_datasource_name }})
+    orgId: {{ horde_monitoring_grafana_public_org_id }}
+{% endif %}
+{% else %}
+deleteDatasources: []
+{% endif %}
+
 datasources:
   # --- Org 1 (admin) datasources ---
   - name: {{ horde_monitoring_application_datasource_name }}
@@ -157,7 +180,7 @@ datasources:
       httpHeaderName1: X-Scope-OrgID
     secureJsonData:
       httpHeaderValue1: {{ horde_monitoring_public_tenant_id }}
-{% if horde_monitoring_install_loki | bool %}
+{% if public_loki %}
   - name: Loki ({{ horde_monitoring_public_datasource_name }})
     uid: loki-public
     orgId: {{ horde_monitoring_grafana_public_org_id }}
@@ -171,7 +194,7 @@ datasources:
     secureJsonData:
       httpHeaderValue1: {{ horde_monitoring_public_tenant_id }}
 {% endif %}
-{% if horde_monitoring_install_tempo | bool %}
+{% if public_tempo %}
   - name: Tempo
     uid: tempo-public
     orgId: {{ horde_monitoring_grafana_public_org_id }}
@@ -181,7 +204,7 @@ datasources:
     isDefault: false
     editable: false
     jsonData:
-{% if horde_monitoring_install_loki | bool %}
+{% if public_loki %}
       tracesToLogsV2:
         datasourceUid: loki-public
         filterByTraceID: true
@@ -194,7 +217,7 @@ datasources:
       nodeGraph:
         enabled: true
 {% endif %}
-{% if horde_monitoring_install_pyroscope | bool %}
+{% if public_pyroscope %}
   - name: Pyroscope ({{ horde_monitoring_public_datasource_name }})
     uid: pyroscope-public
     orgId: {{ horde_monitoring_grafana_public_org_id }}

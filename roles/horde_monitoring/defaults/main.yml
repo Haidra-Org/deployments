@@ -269,6 +269,13 @@ horde_monitoring_grafana_public_org_name: "AI Horde Public"
 horde_monitoring_grafana_public_org_id: 2
 horde_monitoring_grafana_anonymous_enabled: true
 horde_monitoring_grafana_anonymous_org_role: "Viewer"
+# Public metric dashboards do not require anonymous raw telemetry access.
+# Each extra datasource must be explicitly enabled for the public org.
+horde_monitoring_grafana_public_loki_enabled: false
+horde_monitoring_grafana_public_tempo_enabled: false
+horde_monitoring_grafana_public_pyroscope_enabled: false
+# Allows consuming playbooks to reject older collections that ignore this policy.
+horde_monitoring_grafana_public_datasource_policy_supported: true
 # Dashboard refresh floor and dataproxy timeout protect against expensive queries
 # (primary query protection is at the Mimir tenant limits level)
 horde_monitoring_grafana_min_refresh_interval: "5s"
