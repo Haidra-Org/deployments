@@ -498,6 +498,14 @@ horde_monitoring_loki_max_query_lookback: "2160h"
 # Structured metadata (enables trace_id/span_id on log lines from OTLP sources)
 horde_monitoring_loki_allow_structured_metadata: true
 
+# Loki ruler remote_write: send the results of Loki *recording* rules to Mimir,
+# so dashboards can read pre-aggregated log counts instead of re-scanning raw
+# logs on every refresh. Each rule's tenant is sent as X-Scope-OrgID, so a rule
+# in Loki tenant X lands in Mimir tenant X. Alerting rules are unaffected.
+# Enabling it adds a ruler WAL under the Loki data dir and needs a Loki restart.
+horde_monitoring_loki_ruler_remote_write_enabled: false
+horde_monitoring_loki_ruler_remote_write_url: "http://mimir:{{ horde_monitoring_mimir_port }}/api/v1/push"
+
 # ---------------------------------------------------------------------------
 # Tempo (distributed tracing — Docker-based, monolithic mode, S3-compatible storage)
 # ---------------------------------------------------------------------------

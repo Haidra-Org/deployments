@@ -90,6 +90,17 @@ ruler:
   rule_path: /loki/rule-cache
   evaluation_interval: 1m
   poll_interval: 1m
+{% if horde_monitoring_loki_ruler_remote_write_enabled | bool %}
+  # Recording-rule results go to Mimir; the rule's tenant becomes X-Scope-OrgID.
+  wal:
+    dir: /loki/ruler-wal
+  remote_write:
+    enabled: true
+    add_org_id_header: true
+    clients:
+      mimir:
+        url: {{ horde_monitoring_loki_ruler_remote_write_url }}
+{% endif %}
 {% if horde_monitoring_mimir_enable_s3 | bool %}
   storage:
     type: s3

@@ -261,6 +261,7 @@ The audience filename convention for app dashboards is documented in
 | `horde_monitoring_loki_image`              | `grafana/loki:3.4.2` | Loki image (pinned)     |
 | `horde_monitoring_loki_port`               | `3100`               | HTTP API port           |
 | `horde_monitoring_loki_retention_period`   | `2160h`              | Log retention (90 days) |
+| `horde_monitoring_loki_ruler_remote_write_enabled` | `false` | Send Loki **recording** rule results to Mimir (`horde_monitoring_loki_ruler_remote_write_url`, default `http://mimir:<port>/api/v1/push`); each rule's tenant is sent as `X-Scope-OrgID`. Adds a ruler WAL under the Loki data dir; needs a Loki restart. Use it to pre-aggregate log counts that dashboards would otherwise re-scan. |
 
 ### Tempo (Enabled by default)
 
